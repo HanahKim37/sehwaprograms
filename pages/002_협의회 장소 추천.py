@@ -3,13 +3,14 @@ import folium
 from folium import Icon
 from geopy.geocoders import Nominatim
 from streamlit_folium import st_folium
+import time
 
+# 페이지 설정
 st.set_page_config(page_title="협의회 추천 장소", layout="wide")
-
 st.title("📍 협의회 추천 장소")
 st.write("장소 이름을 입력하면 지도에 자동으로 표시됩니다.")
 
-# 장소 정보 입력
+# 장소 입력 폼
 with st.form("place_form", clear_on_submit=True):
     st.subheader("📝 장소 입력")
     place = st.text_input("장소 이름", value="")
@@ -17,7 +18,6 @@ with st.form("place_form", clear_on_submit=True):
     department = st.text_input("교과/부서")
     recommender = st.text_input("추천인")
     note = st.text_area("비고")
-
     submitted = st.form_submit_button("지도에 추가하기")
 
 # 세션 상태 초기화
@@ -26,14 +26,15 @@ if "places" not in st.session_state:
 
 # 지오코딩 함수
 def geocode_address(address):
-    geolocator = Nominatim(user_agent="geoapiExercises")
+    geolocator = Nominatim(user_agent="my_unique_streamlit_app_sehwa_2025")  # 고유한 user_agent
+    time.sleep(1)  # Nominatim 요청 제한 정책 준수
     location = geolocator.geocode(address)
     if location:
         return location.latitude, location.longitude
     else:
         return None, None
 
-# 장소 추가
+# 장소 추가 처리
 if submitted and place:
     lat, lon = geocode_address(place)
     if lat and lon:

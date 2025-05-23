@@ -9,7 +9,7 @@ st.set_page_config(page_title="협의회 추천 장소", layout="wide")
 st.title("📍 협의회 추천 장소")
 st.write("장소 이름을 입력하면 지도에 자동으로 표시됩니다.")
 
-# 입력 폼
+# 장소 입력 폼
 with st.form("place_form", clear_on_submit=True):
     st.subheader("📝 장소 입력")
     place = st.text_input("장소 이름", value="")
@@ -23,7 +23,16 @@ with st.form("place_form", clear_on_submit=True):
 if "places" not in st.session_state:
     st.session_state.places = []
 
-# 지오코딩
+# 기존 항목에 id 없으면 추가
+for p in st.session_state.places:
+    if "id" not in p:
+        p["id"] = f"{p['place']}_{time.time()}"
+
+# 삭제 시 id 저장용 상태값
+if "delete_target_id" not in st.session_state:
+    st.session_state.delete_target_id = None
+
+# 지오코딩 함수
 def geocode_address(address):
     geolocator = Nominatim(user_agent="my_unique_streamlit_app_sehwa_2025")
     time.sleep(1)
@@ -38,7 +47,7 @@ if submitted and place:
     lat, lon = geocode_address(place)
     if lat and lon:
         st.session_state.places.append({
-            "id": f"{place}_{time.time()}",  # 고유 ID
+            "id": f"{place}_{time.time()}",
             "place": place,
             "lat": lat,
             "lon": lon,
@@ -100,13 +109,20 @@ with col2:
                         - 교과/부서: {e['department']}
                         - 추천인: {e['recommender']}
                         """)
+
                     with col_delete:
-                        if st.button("❌", key=f"delete_{e['id']}"):
-                            pw = st.text_input(f"비밀번호 입력 (장소: {e['place']})", type="password", key=f"pw_{e['id']}")
-                            if pw:
-                                if pw == "haeunkim":
-                                    st.session_state.places = [p for p in st.session_state.places if p["id"] != e["id"]]
-                                    st.success(f"{e['place']} 삭제 완료")
-                                    st.experimental_rerun()
-                                else:
-                                    st.error("❗ 비밀번호가 틀렸습니다.")
+                        if st.button("❌", key=f"delete_btn_{e['id']}"):
+                            st.session_state.delete_target_id = e["id"]
+                            st.rerun()
+
+                    # 삭제할 항목이면 비밀번호 입력
+                    if st.session_state.delete_target_id == e["id"]:
+                        pw = st.text_input("비밀번호 입력", type="password", key=f"pw_{e['id']}")
+                        if st.button("삭제 확인", key=f"confirm_delete_{e['id']}"):
+                            if pw == "haeunkim":
+                                st.session_state.places = [p for p in st.session_state.places if p["id"] != e["id"]]
+                                st.session_state.delete_target_id = None
+                                st.success(f"'{e['place']}' 삭제 완료")
+                                st.rerun()
+                            else:
+                                st.error("❗ 비밀번호가 틀렸습니다.")

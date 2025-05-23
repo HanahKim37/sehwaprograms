@@ -23,24 +23,26 @@ with st.form("place_form", clear_on_submit=True):
 if "places" not in st.session_state:
     st.session_state.places = []
 
-# 기존 항목에 id 없으면 추가
+# id 없는 항목에 id 추가
 for p in st.session_state.places:
     if "id" not in p:
         p["id"] = f"{p['place']}_{time.time()}"
 
-# 삭제 시 id 저장용 상태값
 if "delete_target_id" not in st.session_state:
     st.session_state.delete_target_id = None
 
-# 지오코딩 함수
+# 지도에서 확대 표시할 위치
+if "focused_location" not in st.session_state:
+    st.session_state.focused_location = None
+
+# 지오코딩
 def geocode_address(address):
     geolocator = Nominatim(user_agent="my_unique_streamlit_app_sehwa_2025")
     time.sleep(1)
     location = geolocator.geocode(address)
     if location:
         return location.latitude, location.longitude
-    else:
-        return None, None
+    return None, None
 
 # 장소 추가
 if submitted and place:
@@ -68,8 +70,16 @@ def get_marker_color(capacity):
         "20명 이상": "red"
     }.get(capacity, "gray")
 
+# 지도 중심 위치
+if st.session_state.focused_location:
+    map_center = st.session_state.focused_location
+    zoom_level = 15
+else:
+    map_center = [37.5665, 126.9780]
+    zoom_level = 6
+
 # 지도 생성
-m = folium.Map(location=[37.5665, 126.9780], zoom_start=6)
+m = folium.Map(location=map_center, zoom_start=zoom_level)
 for entry in st.session_state.places:
     popup_text = f"""<b>{entry['place']}</b><br>
     적정 인원: {entry['capacity']}<br>
@@ -83,7 +93,7 @@ for entry in st.session_state.places:
         icon=Icon(color=get_marker_color(entry["capacity"]))
     ).add_to(m)
 
-# 컬럼 구성
+# 컬럼 나누기
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -104,8 +114,11 @@ with col2:
                 for e in entries:
                     col_entry, col_delete = st.columns([4, 1])
                     with col_entry:
+                        if st.button(f"📌 {e['place']}", key=f"focus_{e['id']}"):
+                            st.session_state.focused_location = [e["lat"], e["lon"]]
+                            st.rerun()
+
                         st.markdown(f"""
-                        **📌 {e['place']}**
                         - 교과/부서: {e['department']}
                         - 추천인: {e['recommender']}
                         """)
@@ -115,13 +128,13 @@ with col2:
                             st.session_state.delete_target_id = e["id"]
                             st.rerun()
 
-                    # 삭제할 항목이면 비밀번호 입력
                     if st.session_state.delete_target_id == e["id"]:
                         pw = st.text_input("비밀번호 입력", type="password", key=f"pw_{e['id']}")
                         if st.button("삭제 확인", key=f"confirm_delete_{e['id']}"):
                             if pw == "haeunkim":
                                 st.session_state.places = [p for p in st.session_state.places if p["id"] != e["id"]]
                                 st.session_state.delete_target_id = None
+                                st.session_state.focused_location = None
                                 st.success(f"'{e['place']}' 삭제 완료")
                                 st.rerun()
                             else:

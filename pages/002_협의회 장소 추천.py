@@ -9,7 +9,7 @@ st.set_page_config(page_title="협의회 추천 장소", layout="wide")
 st.title("📍 협의회 추천 장소")
 st.write("장소 이름을 입력하면 지도에 자동으로 표시됩니다.")
 
-# 장소 입력 폼
+# 입력 폼
 with st.form("place_form", clear_on_submit=True):
     st.subheader("📝 장소 입력")
     place = st.text_input("장소 이름", value="")
@@ -23,10 +23,10 @@ with st.form("place_form", clear_on_submit=True):
 if "places" not in st.session_state:
     st.session_state.places = []
 
-# 지오코딩 함수
+# 지오코딩
 def geocode_address(address):
     geolocator = Nominatim(user_agent="my_unique_streamlit_app_sehwa_2025")
-    time.sleep(1)  # OSM 요청 제한 준수
+    time.sleep(1)
     location = geolocator.geocode(address)
     if location:
         return location.latitude, location.longitude
@@ -38,6 +38,7 @@ if submitted and place:
     lat, lon = geocode_address(place)
     if lat and lon:
         st.session_state.places.append({
+            "id": f"{place}_{time.time()}",  # 고유 ID
             "place": place,
             "lat": lat,
             "lon": lon,
@@ -76,12 +77,10 @@ for entry in st.session_state.places:
 # 컬럼 구성
 col1, col2 = st.columns([2, 1])
 
-# 지도 표시
 with col1:
     st.subheader("🗺️ 추천 장소 지도")
     st_folium(m, width=800, height=600)
 
-# 리스트 표시
 with col2:
     st.subheader("📋 장소 목록 (적정 인원별)")
 
@@ -94,8 +93,20 @@ with col2:
         if entries:
             with st.expander(f"{capacity_group} ({len(entries)}곳)", expanded=True):
                 for e in entries:
-                    st.markdown(f"""
-                    **📌 {e['place']}**
-                    - 교과/부서: {e['department']}
-                    - 추천인: {e['recommender']}
-                    """)
+                    col_entry, col_delete = st.columns([4, 1])
+                    with col_entry:
+                        st.markdown(f"""
+                        **📌 {e['place']}**
+                        - 교과/부서: {e['department']}
+                        - 추천인: {e['recommender']}
+                        """)
+                    with col_delete:
+                        if st.button("❌", key=f"delete_{e['id']}"):
+                            pw = st.text_input(f"비밀번호 입력 (장소: {e['place']})", type="password", key=f"pw_{e['id']}")
+                            if pw:
+                                if pw == "haeunkim":
+                                    st.session_state.places = [p for p in st.session_state.places if p["id"] != e["id"]]
+                                    st.success(f"{e['place']} 삭제 완료")
+                                    st.experimental_rerun()
+                                else:
+                                    st.error("❗ 비밀번호가 틀렸습니다.")

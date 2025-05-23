@@ -1,5 +1,5 @@
 plotly
 folium
 streamlit_folium
-streamlit folium geopy streamlit-folium
+geopy
 koreanize_matplotlib

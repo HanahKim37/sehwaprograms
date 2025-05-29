@@ -1,3 +1,20 @@
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
+import matplotlib.font_manager as fm
+import os
+
+# 한글 폰트 설정
+font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+if os.path.exists(font_path):
+    font_name = fm.FontProperties(fname=font_path).get_name()
+    rcParams["font.family"] = font_name
+else:
+    # fallback for local or Windows dev
+    rcParams["font.family"] = "Malgun Gothic"  # 윈도우라면 맑은 고딕
+rcParams["axes.unicode_minus"] = False  # 마이너스 깨짐 방지
+
+
+
 import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib import rcParams

@@ -2,91 +2,139 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from io import BytesIO
+import math
 
-def draw_bracket(total_teams, byes_count, byes_teams):
-    fig, ax = plt.subplots(figsize=(max(8, total_teams//2), 6))
-    ax.set_xlim(0, total_teams + 2)
-    ax.set_ylim(0, 10)
+def draw_bracket(total_teams, byes_teams):
+    fig, ax = plt.subplots(figsize=(max(12, total_teams/1.5), 8))
+    ax.set_xlim(0, total_teams * 1.2)
+    ax.set_ylim(0, 12)
     ax.axis('off')
 
-    # 1. 아래쪽에 팀 수만큼 빈 박스 일렬로
-    box_width = 0.8
-    box_height = 0.8
-    y_base = 1
+    box_w = 0.8
+    box_h = 0.8
+    base_y = 1
 
-    team_positions = []  # 각 팀 박스 좌표 (x, y) 저장
-    
+    # 라운드 수 계산 (전체 팀 수가 2의 제곱이 아닐 경우를 위해)
+    rounds = math.ceil(math.log2(total_teams))
+    # 각 라운드별 박스 수
+    round_counts = [math.ceil(total_teams / (2 ** r)) for r in range(rounds)]
+
+    # 각 라운드 박스 좌표 저장 (라운드 번호 → 리스트 of (x,y))
+    round_positions = {}
+
+    # 1라운드: 전체 팀 박스 가로 배치
+    x_start = 1
+    spacing_x = 1.2  # 박스 사이 가로 간격
+    round_positions[0] = []
     for i in range(total_teams):
-        x = i + 1
-        rect = patches.Rectangle((x - box_width/2, y_base), box_width, box_height,
-                                 linewidth=1, edgecolor='black', facecolor='white')
+        x = x_start + i * spacing_x
+        y = base_y
+        rect = patches.Rectangle((x - box_w/2, y), box_w, box_h, linewidth=1, edgecolor='black', facecolor='white')
         ax.add_patch(rect)
-        team_positions.append((x, y_base + box_height / 2))
+        round_positions[0].append((x, y + box_h/2))
 
-    # 2. 부전승 팀과 인접 승자 팀 연결
-    # 부전승팀 번호는 1부터 total_teams 기준, 입력값은 리스트로 받음
-    # 예) total_teams=12, byes_count=4, byes_teams=[3,6,9,12]
-    # 1,2 우승자가 3과 붙는다 -> (1,2) 연결선을 그리고 3과 붙는 모양
-    
-    # 승자팀은 부전승팀 앞에 있는 2팀씩 묶음 (1,2) (4,5) (7,8) (10,11) 등
-    # 부전승팀 번호는 홀수 or 짝수 여부와 관계없이 그냥 부전승팀 번호 기준
-    
-    y_bye = y_base + box_height + 1.5
+    # 부전승팀 표시용 높이
+    bye_y = base_y + box_h + 2
 
+    # 부전승팀: 위쪽에 빈 박스 그리기 (same x좌표)
     for bye in byes_teams:
-        # 부전승팀 위치
-        bx, by = team_positions[bye - 1]
-        # 앞에 붙을 승자 2팀 위치 (bye-2, bye-3)
-        # 예: bye=3 → 승자팀 = 1,2 
-        # bye가 3,6,9,12...일 경우 승자팀 번호는 bye-2, bye-1
-        winner1_idx = bye - 2
-        winner2_idx = bye - 3
-        # 승자팀 좌표 (위에서 찾기)
-        if winner1_idx < 0 or winner2_idx < 0:
-            # 예외처리 (처음에 인덱스 음수일 수 있음)
+        if bye < 1 or bye > total_teams:
             continue
-        w1x, w1y = team_positions[winner1_idx]
-        w2x, w2y = team_positions[winner2_idx]
+        x, _ = round_positions[0][bye - 1]
+        rect = patches.Rectangle((x - box_w/2, bye_y), box_w, box_h, linewidth=1, edgecolor='black', facecolor='white')
+        ax.add_patch(rect)
 
-        # 승자팀 사이 연결선 (가로선)
-        mid_y = y_base + box_height + 0.7
-        ax.plot([w2x, w1x], [mid_y, mid_y], color='black')
+    # 2라운드 이상 박스 위치 그리기
+    for r in range(1, rounds):
+        round_positions[r] = []
+        num_boxes = round_counts[r]
+        for i in range(num_boxes):
+            # x 위치: 1라운드 시작점 + i*spacing*2^r (간격이 2배씩 늘어남)
+            x = x_start + (i * spacing_x * (2 ** r))
+            # y 위치는 1라운드보다 위로 올라감, 간격도 라운드마다 다름
+            y = base_y + r * (box_h + 1.8)
+            rect = patches.Rectangle((x - box_w/2, y), box_w, box_h, linewidth=1, edgecolor='black', facecolor='white')
+            ax.add_patch(rect)
+            round_positions[r].append((x, y + box_h/2))
 
-        # 승자팀 각 박스에서 위로 선 연결
-        ax.plot([w2x, w2x], [w2y, mid_y], color='black')
-        ax.plot([w1x, w1x], [w1y, mid_y], color='black')
+    # 연결선 그리기 (라운드별 박스와 다음 라운드 박스 연결)
+    # 1라운드 -> 2라운드
+    for i in range(round_counts[1]):
+        # 2라운드 박스 위치
+        x2, y2 = round_positions[1][i]
 
-        # 승자팀 사이선 중간에서 부전승팀으로 가는 선 (세로선)
-        ax.plot([ (w2x + w1x)/2, (w2x + w1x)/2], [mid_y, y_bye], color='black')
+        # 1라운드 박스 2개 좌표 (2i, 2i+1)
+        idx1 = i * 2
+        idx2 = idx1 + 1
+        if idx2 >= total_teams:
+            # 홀수개 팀일 경우 마지막 하나만 연결
+            idx2 = idx1
 
-        # 부전승팀 박스에서 위로 선 연결
-        ax.plot([bx, (w2x + w1x)/2], [by, y_bye], color='black')
+        x1_1, y1_1 = round_positions[0][idx1]
+        x1_2, y1_2 = round_positions[0][idx2]
+
+        # 왼쪽 박스에서 위로 선
+        ax.plot([x1_1, x1_1], [y1_1, y2 - box_h/2], color='black')
+        # 오른쪽 박스에서 위로 선
+        ax.plot([x1_2, x1_2], [y1_2, y2 - box_h/2], color='black')
+        # 두 선을 연결하는 가로선 (직각 꺾임)
+        ax.plot([x1_1, x1_2], [y2 - box_h/2, y2 - box_h/2], color='black')
+
+        # 위 가로선에서 2라운드 박스로 세로선
+        ax.plot([x2, (x1_1 + x1_2)/2], [y2 + box_h/2, y2 - box_h/2], color='black')
+
+    # 2라운드 이상 연결 (r -> r+1)
+    for r in range(1, rounds - 1):
+        for i in range(round_counts[r + 1]):
+            x_next, y_next = round_positions[r + 1][i]
+
+            idx1 = i * 2
+            idx2 = idx1 + 1
+            if idx2 >= round_counts[r]:
+                idx2 = idx1
+
+            x1_1, y1_1 = round_positions[r][idx1]
+            x1_2, y1_2 = round_positions[r][idx2]
+
+            ax.plot([x1_1, x1_1], [y1_1, y_next - box_h/2], color='black')
+            ax.plot([x1_2, x1_2], [y1_2, y_next - box_h/2], color='black')
+            ax.plot([x1_1, x1_2], [y_next - box_h/2, y_next - box_h/2], color='black')
+            ax.plot([x_next, (x1_1 + x1_2)/2], [y_next + box_h/2, y_next - box_h/2], color='black')
+
+    # 부전승팀과 연결선 (부전승팀 박스 위쪽 위치 bye_y → 1라운드 박스)
+    for bye in byes_teams:
+        if bye < 1 or bye > total_teams:
+            continue
+        x, y1 = round_positions[0][bye - 1]
+        # 부전승팀 박스 위치
+        y_bye = bye_y + box_h/2
+        # 1라운드 박스 y 좌표
+        y_1 = y1
+
+        # 직각 꺾임 선으로 연결 (부전승팀 박스 아래 → 1라운드 박스 위)
+        ax.plot([x, x], [y_bye, bye_y], color='black')  # 세로선
+        ax.plot([x, x], [bye_y, y_1 + box_h/2], color='black')  # 세로선
+        # 실제 연결선 (두 직각 꺾임이지만 시각적으로 연결됨)
 
     return fig
 
-def main():
-    st.title("토너먼트 대진표 생성기")
 
-    total_teams = st.number_input("전체 팀 수", min_value=2, step=1, value=12)
-    byes_count = st.number_input("부전승 팀 수", min_value=0, max_value=total_teams, step=1, value=4)
-    
-    byes_input = st.text_input("부전승으로 올라가는 팀 번호 (콤마로 구분, 예: 3,6,9,12)", "3,6,9,12")
-    
+def main():
+    st.title("확장된 토너먼트 대진표 생성기")
+
+    total_teams = st.number_input("전체 팀 수 (2 이상, 2의 배수 권장)", min_value=2, step=1, value=12)
+    byes_input = st.text_input("부전승 팀 번호 (콤마 구분, 예: 3,6,9,12)", "3,6,9,12")
+
     if st.button("대진표 생성"):
         try:
             byes_teams = [int(x.strip()) for x in byes_input.split(",") if x.strip()]
             # 기본 검증
-            if len(byes_teams) != byes_count:
-                st.error("부전승 팀 수와 입력한 팀 번호 개수가 일치하지 않습니다.")
-                return
-            if max(byes_teams) > total_teams or min(byes_teams) < 1:
+            if any(t < 1 or t > total_teams for t in byes_teams):
                 st.error("부전승 팀 번호는 1부터 전체 팀 수 사이여야 합니다.")
                 return
-
-            fig = draw_bracket(total_teams, byes_count, byes_teams)
+            fig = draw_bracket(total_teams, byes_teams)
             st.pyplot(fig)
 
-            # 이미지 다운로드
             buf = BytesIO()
             fig.savefig(buf, format="png", bbox_inches='tight')
             buf.seek(0)
@@ -96,8 +144,9 @@ def main():
                 file_name="bracket.png",
                 mime="image/png"
             )
+
         except Exception as e:
-            st.error(f"입력값 처리 중 오류: {e}")
+            st.error(f"오류 발생: {e}")
 
 if __name__ == "__main__":
     main()

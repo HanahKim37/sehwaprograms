@@ -1,93 +1,69 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-import networkx as nx
-from PIL import Image
-import os
+from matplotlib.patches import Rectangle
 
-# ===== 기능 함수 =====
+st.set_page_config(page_title="토너먼트 대진표", layout="centered")
+st.header("🏆 토너먼트 대진표 생성기")
 
-def generate_team_names(total):
-    return [f'Team {i+1}' for i in range(total)]
+# 입력
+num_teams = st.number_input("총 팀 수 (2의 제곱수)", min_value=2, value=8, step=1)
 
-def create_bracket(teams, byes):
-    rounds = []
-    current = teams[byes:]
-    bye_teams = teams[:byes]
-    if len(current) >= 2:
-        rounds.append([(current[i], current[i+1]) for i in range(0, len(current)-1, 2)])
-        next_round = [f"Winner({a} vs {b})" for a, b in rounds[0]]
-    else:
-        next_round = []
+# 2의 거듭제곱 확인
+import math
+if math.log2(num_teams) % 1 != 0:
+    st.error("⚠️ 팀 수는 2, 4, 8, 16, 32 같은 2의 거듭제곱이어야 합니다.")
+    st.stop()
 
-    next_round += bye_teams
+# 대진표 생성 함수
+def draw_tournament_bracket(num_teams, filename='tournament.png'):
+    fig, ax = plt.subplots(figsize=(12, 8))
 
-    while len(next_round) > 1:
-        round_match = [(next_round[i], next_round[i+1]) for i in range(0, len(next_round)-1, 2)]
-        rounds.append(round_match)
-        next_round = [f"Winner({a} vs {b})" for a, b in round_match]
+    box_width = 1
+    box_height = 0.5
+    h_spacing = 2  # 가로 간격
+    v_spacing = 1  # 세로 간격
 
-    return rounds
+    rounds = int(math.log2(num_teams))
+    y_positions = {}
 
-def build_tree_graph(bracket):
-    G = nx.DiGraph()
-    pos = {}
-    labels = {}
+    # 1라운드 박스 그리기 (왼쪽에서 시작)
+    for i in range(num_teams):
+        x = 0
+        y = i * (box_height + v_spacing)
+        ax.add_patch(Rectangle((x, y), box_width, box_height, fill=False))
+        y_positions[(0, i)] = y + box_height / 2  # 가운데 y 저장
 
-    def add_match(match, level, x):
-        if isinstance(match, str):
-            G.add_node(match)
-            pos[match] = (x, -level)
-            labels[match] = match
-            return x
+    # 상위 라운드 박스 및 선 그리기
+    for r in range(1, rounds + 1):
+        num_matches = num_teams // (2 ** r)
+        for m in range(num_matches):
+            x = r * h_spacing
+            left_idx = m * 2
+            right_idx = m * 2 + 1
 
-        team1, team2 = match
-        center1 = add_match(team1, level+1, x)
-        center2 = add_match(team2, level+1, x+1)
-        name = f"Winner({team1} vs {team2})"
-        G.add_node(name)
-        pos[name] = ((center1 + center2) / 2, -level)
-        labels[name] = name
-        G.add_edge(team1, name)
-        G.add_edge(team2, name)
-        return (center1 + center2) / 2
+            y1 = y_positions[(r - 1, left_idx)]
+            y2 = y_positions[(r - 1, right_idx)]
+            y = (y1 + y2) / 2
+            y_positions[(r, m)] = y
 
-    final = bracket[-1][0]
-    add_match(final, 0, 0)
-    return G, pos, labels
+            # 박스
+            ax.add_patch(Rectangle((x, y - box_height / 2), box_width, box_height, fill=False))
 
-def draw_bracket(G, pos, labels, filename="bracket.png"):
-    plt.figure(figsize=(12, 8))
-    nx.draw(G, pos, labels=labels, with_labels=True, node_size=3000,
-            node_color='lightgreen', font_size=8, font_weight='bold', arrows=False)
-    plt.title("Tournament Bracket")
+            # 선: 왼쪽 팀 → 현재 박스
+            ax.plot([x - h_spacing + box_width, x, x], [y1, y1, y], color="black")
+            ax.plot([x - h_spacing + box_width, x, x], [y2, y2, y], color="black")
+
+    ax.set_xlim(-1, (rounds + 1) * h_spacing)
+    ax.set_ylim(-1, y + 2)
+    ax.axis("off")
     plt.tight_layout()
     plt.savefig(filename)
     plt.close()
     return filename
 
-# ===== Streamlit 페이지 =====
-
-st.header("🏆 토너먼트 대진표 생성기")
-st.markdown("팀 수와 부전승 팀 수를 입력하면 트리 형태의 대진표를 이미지로 만들어 보여줍니다.")
-
-# 입력부
-col1, col2 = st.columns(2)
-with col1:
-    total_teams = st.number_input("전체 팀 수", min_value=2, step=1, value=8)
-with col2:
-    bye_teams = st.number_input("부전승 팀 수", min_value=0, max_value=total_teams-1, step=1, value=0)
-
-if st.button("🖼 대진표 생성"):
-    teams = generate_team_names(total_teams)
-
-    if total_teams - bye_teams < 2:
-        st.warning("⚠️ 부전승을 제외한 팀 수가 2 이상이어야 합니다.")
-    else:
-        bracket = create_bracket(teams, bye_teams)
-        G, pos, labels = build_tree_graph(bracket)
-        filename = "bracket.png"
-        draw_bracket(G, pos, labels, filename)
-
-        st.image(Image.open(filename), caption="🎯 생성된 대진표", use_column_width=True)
-        with open(filename, "rb") as f:
-            st.download_button("📥 대진표 이미지 다운로드", f, file_name="bracket.png")
+# 버튼 누르면 실행
+if st.button("🎯 대진표 생성"):
+    file = draw_tournament_bracket(num_teams)
+    st.image(file, caption="📄 토너먼트 대진표 (빈 칸)", use_column_width=True)
+    with open(file, "rb") as f:
+        st.download_button("📥 이미지 다운로드", f, file_name="tournament_bracket.png")

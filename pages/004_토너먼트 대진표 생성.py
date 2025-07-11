@@ -15,11 +15,12 @@ if (num_teams - bye_teams) < 2:
     st.warning("⚠️ 부전승을 제외한 팀 수가 2 이상이어야 합니다.")
     st.stop()
 
-# 2의 거듭제곱으로 조정
-adjusted_teams = 2 ** math.ceil(math.log2(num_teams))
-if adjusted_teams != num_teams:
-    st.info(f"⚠️ {num_teams} → {adjusted_teams} 팀으로 자동 보정됩니다.")
-    num_teams = adjusted_teams
+# (자동 보정 부분 제거)
+# # 2의 거듭제곱으로 조정
+# adjusted_teams = 2 ** math.ceil(math.log2(num_teams))
+# if adjusted_teams != num_teams:
+#     st.info(f"⚠️ {num_teams} → {adjusted_teams} 팀으로 자동 보정됩니다.")
+#     num_teams = adjusted_teams
 
 # ✅ 대진표 그리기 함수 (우승자가 위로, 부전승 고려)
 def draw_vertical_bracket(total_teams, bye_teams, filename="vertical_bracket.png"):
@@ -30,12 +31,13 @@ def draw_vertical_bracket(total_teams, bye_teams, filename="vertical_bracket.png
     h_spacing = 2
     v_spacing = 1
 
+    # rounds를 그대로 int(math.log2())로 사용하면, 팀 수가 2의 거듭제곱이 아닐 경우
+    # 최종 라운드가 제대로 연결되지 않을 수 있습니다.
+    # 필요하면 math.ceil()로 바꾸거나, 로직을 재구성해주셔야 합니다.
     rounds = int(math.log2(total_teams))
     x_positions = {}
-    box_centers = {}
 
     # 1라운드 (맨 아래)
-    match_index = 0
     for i in range(total_teams):
         y = 0
         x = i * (box_height + v_spacing)
@@ -46,7 +48,7 @@ def draw_vertical_bracket(total_teams, bye_teams, filename="vertical_bracket.png
 
     # 위로 올라가며 그리기
     for r in range(1, rounds + 1):
-        num_matches = total_teams // (2 ** (r))
+        num_matches = total_teams // (2 ** r)
         for m in range(num_matches):
             prev1 = x_positions[(r - 1, m * 2)]
             prev2 = x_positions[(r - 1, m * 2 + 1)]
@@ -64,7 +66,7 @@ def draw_vertical_bracket(total_teams, bye_teams, filename="vertical_bracket.png
 
     # 부전승 박스 표시 (하단에 따로)
     if bye_teams > 0:
-        st.markdown("✅ **부전승 팀 수:** {}명 → 2라운드 자동 진출".format(bye_teams))
+        st.markdown(f"✅ **부전승 팀 수:** {bye_teams}명 → 2라운드 자동 진출")
         for i in range(bye_teams):
             y = box_width + h_spacing
             x = (total_teams + i) * (box_height + v_spacing)

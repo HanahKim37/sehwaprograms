@@ -3,88 +3,81 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import math
 
-st.set_page_config(page_title="토너먼트 대진표", layout="centered")
-st.title("🏆 토너먼트 대진표 생성기 (빈 칸용)")
+def generate_matchups(num_teams, bye_teams):
+    """
+    예: 12팀, 부전승 4팀이면, 
+    1라운드: 8팀만 경기, 4팀 부전승 -> 4승 + 4부전승 = 8
+    2라운드: 8 -> 4
+    3라운드: 4 -> 2
+    4라운드: 2 -> 1
+    이런 식으로 매치업 자료구조 만들기
+    """
+    # 여기서 원하시는 로직(예: 1,2 승자가 3이랑 붙도록)대로 
+    # matchups를 구성해 주세요.
+    # 여기서는 개념만 간략히 표현합니다.
+    matchups = {
+        1: [
+            ("A", [1, 2]),
+            ("B", [4, 5])
+            # 나머지도 비슷하게...
+        ],
+        2: [
+            ("C", ["A", 3]),
+            ("D", ["B", 6])
+            # ...
+        ],
+        3: [
+            ("E", ["C", "D"])
+        ]
+    }
+    return matchups
 
-# ✅ 사용자 입력
-num_teams = st.number_input("전체 팀 수 (2의 제곱수 권장)", min_value=2, value=8, step=1)
-bye_teams = st.number_input("부전승 팀 수", min_value=0, max_value=num_teams-1, value=0, step=1)
+def draw_bracket(matchups):
+    fig, ax = plt.subplots()
+    # 라운드별 박스 위치를 저장할 dict: { "A": (x,y), "B": (x,y), 1:(x,y), 2:(x,y), ... }
+    centers = {}
 
-# 입력 검증
-if (num_teams - bye_teams) < 2:
-    st.warning("⚠️ 부전승을 제외한 팀 수가 2 이상이어야 합니다.")
-    st.stop()
+    # 라운드별로 x 좌표를 달리 부여
+    for round_i, round_info in matchups.items():
+        x_coord = round_i * 3  # round 별 x간격
+        for match_id, participants in round_info:
+            # match_id에 해당하는 박스 하나 그리기
+            y_coord = ... # 라운드 안에서 몇 번째 매치인지에 따라 y 계산
+            # 박스 그리기
+            box_width, box_height = 1, 0.5
+            ax.add_patch(Rectangle((x_coord, y_coord), box_width, box_height, fill=False))
+            # 박스의 중심 연결
+            center_x = x_coord + box_width / 2
+            center_y = y_coord + box_height / 2
+            centers[match_id] = (center_x, center_y)
 
-# (자동 보정 부분 제거)
-# # 2의 거듭제곱으로 조정
-# adjusted_teams = 2 ** math.ceil(math.log2(num_teams))
-# if adjusted_teams != num_teams:
-#     st.info(f"⚠️ {num_teams} → {adjusted_teams} 팀으로 자동 보정됩니다.")
-#     num_teams = adjusted_teams
+            # 참가자 각각에 대해 선을 그리기
+            for p in participants:
+                if isinstance(p, int):
+                    # p가 팀 번호라면, 따로 팀 박스 혹은 표시
+                    # 혹은 1라운드면 (p, int)에 대해 별도 박스 그릴 수도 있음
+                    # 여기서는 간략히 '~' 처리
+                    px, py = x_coord - 2, y_coord  # 그냥 옆에 그린다고 가정
+                    # ...
+                    ax.plot([px, center_x], [py, center_y], color='black')
+                else:
+                    # p가 "A", "B" 같은 이전 match 승자면
+                    prev_cx, prev_cy = centers[p]
+                    ax.plot([prev_cx, center_x], [prev_cy, center_y], color='black')
 
-# ✅ 대진표 그리기 함수 (우승자가 위로, 부전승 고려)
-def draw_vertical_bracket(total_teams, bye_teams, filename="vertical_bracket.png"):
-    fig, ax = plt.subplots(figsize=(10, 0.6 * total_teams + 3))
-
-    box_width = 1.2
-    box_height = 0.6
-    h_spacing = 2
-    v_spacing = 1
-
-    # rounds를 그대로 int(math.log2())로 사용하면, 팀 수가 2의 거듭제곱이 아닐 경우
-    # 최종 라운드가 제대로 연결되지 않을 수 있습니다.
-    # 필요하면 math.ceil()로 바꾸거나, 로직을 재구성해주셔야 합니다.
-    rounds = int(math.log2(total_teams))
-    x_positions = {}
-
-    # 1라운드 (맨 아래)
-    for i in range(total_teams):
-        y = 0
-        x = i * (box_height + v_spacing)
-        ax.add_patch(Rectangle((y, x), box_width, box_height, fill=False))
-        center_x = y + box_width / 2
-        center_y = x + box_height / 2
-        x_positions[(0, i)] = (center_x, center_y)
-
-    # 위로 올라가며 그리기
-    for r in range(1, rounds + 1):
-        num_matches = total_teams // (2 ** r)
-        for m in range(num_matches):
-            prev1 = x_positions[(r - 1, m * 2)]
-            prev2 = x_positions[(r - 1, m * 2 + 1)]
-            y = r * (box_width + h_spacing)
-            x = (prev1[1] + prev2[1]) / 2
-
-            # 박스
-            ax.add_patch(Rectangle((y, x - box_height / 2), box_width, box_height, fill=False))
-            curr_center = (y + box_width / 2, x)
-            x_positions[(r, m)] = curr_center
-
-            # 선 (직각 연결)
-            for prev in [prev1, prev2]:
-                ax.plot([prev[0], y, y], [prev[1], prev[1], x], color='black')
-
-    # 부전승 박스 표시 (하단에 따로)
-    if bye_teams > 0:
-        st.markdown(f"✅ **부전승 팀 수:** {bye_teams}명 → 2라운드 자동 진출")
-        for i in range(bye_teams):
-            y = box_width + h_spacing
-            x = (total_teams + i) * (box_height + v_spacing)
-            ax.add_patch(Rectangle((y, x), box_width, box_height, fill=False, linestyle='dashed'))
-            ax.text(y + box_width/2, x + box_height/2, "□", ha="center", va="center")
-
+    ax.invert_yaxis()
     ax.axis("off")
-    ax.set_xlim(-1, (rounds + 1) * (box_width + h_spacing))
-    ax.set_ylim(-2, total_teams * (box_height + v_spacing))
-    plt.gca().invert_yaxis()  # ← 우승자가 위로 올라가도록
-    plt.tight_layout()
-    plt.savefig(filename)
-    plt.close()
-    return filename
+    st.pyplot(fig)
 
-# ✅ 버튼 클릭 시 실행
-if st.button("🎯 대진표 생성"):
-    file = draw_vertical_bracket(num_teams, bye_teams)
-    st.image(file, caption="📄 우승자가 맨 위에 있는 빈칸용 대진표", use_column_width=True)
-    with open(file, "rb") as f:
-        st.download_button("📥 이미지 다운로드", f, file_name="tournament_bracket.png")
+def main():
+    st.title("토너먼트 (커스텀 대진표)")
+    num_teams = st.number_input("전체 팀 수", min_value=2, value=12)
+    bye_teams = st.number_input("부전승 팀 수", min_value=0, value=4)
+
+    # '생성' 버튼 클릭하면, matchups 만들고 그리기
+    if st.button("대진표 생성"):
+        matchups = generate_matchups(num_teams, bye_teams)
+        draw_bracket(matchups)
+
+if __name__ == "__main__":
+    main()

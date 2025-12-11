@@ -1,63 +1,124 @@
 import streamlit as st
 
-# 기본 설정
 st.set_page_config(
     page_title="세화고 프로그램 모음",
-    layout="centered",
-    menu_items={}
+    layout="wide",
 )
 
-# -----------------------------
-# 🎛 사이드바(왼쪽 메뉴)
-# -----------------------------
-st.sidebar.title("📁 부서별 메뉴")
+# ----- 페이지 이동 함수 -----
+def go(page_name):
+    st.switch_page(page_name)
 
-departments = {
-    "교무부": ["시간표 관리", "출결 확인", "성적 처리"],
-    "진로진학부": ["진학 자료 열람", "상담 기록 관리", "진로 설문 분석"],
-    "창의인성부": ["봉사활동 관리", "프로젝트 관리", "창의탐구페스티벌"],
-    "연구부": ["연구 과제 관리", "자료 업로드", "세미나 기록"],
-    "생활안전부": ["생활지도 기록", "상벌점 관리", "안전 점검표"],
-    "학년부": ["학년 업무 자료실", "학생 정보 조회", "학부모 상담 관리"]
+# ----- 사이드바 고급 디자인 적용 -----
+sidebar_style = """
+<style>
+/* 사이드바 전체 배경 */
+[data-testid="stSidebar"] {
+    background-color: #f8f9fa;
+    padding: 20px;
 }
 
-for dept, items in departments.items():
-    with st.sidebar.expander(f"{dept}", expanded=False):
-        for item in items:
-            st.markdown(f"- {item}")
+/* 메뉴 제목 */
+.sidebar-title {
+    font-size: 20px; 
+    font-weight: 700;
+    margin-bottom: 15px;
+    color: #333;
+}
 
-st.sidebar.markdown("---")
-st.sidebar.info("필요한 기능은 언제든지 요청해주세요.")
+/* 링크 스타일 */
+.sidebar-item {
+    font-size: 16px;
+    padding: 6px 4px;
+    border-radius: 6px;
+}
 
+.sidebar-item:hover {
+    background-color: #e6e6e6;
+    cursor: pointer;
+}
+
+</style>
+"""
+
+st.markdown(sidebar_style, unsafe_allow_html=True)
 
 # -----------------------------
-# 🏠 메인 페이지
+# 📁 사이드바 메뉴 구성
+# -----------------------------
+st.sidebar.markdown('<div class="sidebar-title">📂 부서별 메뉴</div>', unsafe_allow_html=True)
+
+menu = {
+    "교무부": {
+        "시간표 관리": "pages/01_교무부_시간표관리.py",
+        "출결 확인": "pages/02_교무부_출결확인.py",
+        "성적 처리": "pages/03_교무부_성적처리.py",
+    },
+    "진로진학부": {
+        "진학 자료 열람": "pages/04_진로진학부_진학자료열람.py",
+        "상담 기록 관리": "pages/05_진로진학부_상담기록관리.py",
+        "진로 설문 분석": "pages/06_진로진학부_설문분석.py",
+    },
+    "창의인성부": {
+        "봉사활동 관리": "pages/07_창의인성부_봉사관리.py",
+        "프로젝트 관리": "pages/08_창의인성부_프로젝트관리.py",
+        "창의탐구페스티벌": "pages/09_창의인성부_탐구페스티벌.py",
+    },
+    "연구부": {
+        "연구 과제 관리": "pages/10_연구부_과제관리.py",
+        "자료 업로드": "pages/11_연구부_자료업로드.py",
+        "세미나 기록": "pages/12_연구부_세미나기록.py",
+    },
+    "생활안전부": {
+        "생활지도 기록": "pages/13_생활안전부_생활지도기록.py",
+        "상벌점 관리": "pages/14_생활안전부_상벌점관리.py",
+        "안전 점검표": "pages/15_생활안전부_점검표.py",
+    },
+    "학년부": {
+        "학년 업무 자료실": "pages/16_학년부_업무자료실.py",
+        "학생 정보 조회": "pages/17_학년부_학생조회.py",
+        "학부모 상담 관리": "pages/18_학년부_상담관리.py",
+    }
+}
+
+
+icons = {
+    "교무부": "🏫",
+    "진로진학부": "🎓",
+    "창의인성부": "🌱",
+    "연구부": "🔬",
+    "생활안전부": "🛡️",
+    "학년부": "📘",
+}
+
+# ----- 토글 메뉴 생성 -----
+for dept, items in menu.items():
+    with st.sidebar.expander(f"{icons.get(dept, '')} {dept}", expanded=False):
+        for name, page in items.items():
+            if st.button(f"• {name}", key=name):
+                go(page)
+
+# -----------------------------
+# 🏠 메인 페이지 본문
 # -----------------------------
 st.markdown("""
 # 🌟 세화고 프로그램 통합 페이지
-## 🎓 업무 편의를 위한 다양한 도구를 한곳에 모았습니다.
+## 업무 효율을 위한 도구를 한곳에 모았습니다.
 
 ---
 
 ### 🔎 제공 기능 안내
-
-- 📋 **학생 제출물 정리 도구**
-- 🔍 **창의탐구페스티벌 타임별 명단 비교**
-- 🧮 **학급 관리 도구**
-- 📊 **보고서 자동 생성기**
-- ➕ 계속 업데이트 중입니다.
+- 📋 학생 제출물 정리 도구  
+- 🔍 창의탐구페스티벌 타임별 명단 비교  
+- 🧮 학급 관리 도구  
+- 📊 보고서 자동 생성기  
+- ➕ 신규 기능이 지속적으로 업데이트됩니다.
 
 ---
 
 ### 💬 문의 및 요청
-
-업무 중 불편한 점이나 필요하신 프로그램이 있다면 편하게 알려주세요.  
-최대한 신속하게 제작하여 반영하겠습니다.
+필요한 프로그램이 있다면 언제든지 말씀해주세요.  
+빠르게 반영하겠습니다.
 
 ---
-
-<center>
-🧡 여러분의 업무 효율을 돕는  
-<strong>세화고 개발 도우미</strong> 드림 🧡
-</center>
-""", unsafe_allow_html=True)
+""")

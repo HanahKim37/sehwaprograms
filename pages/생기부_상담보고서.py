@@ -1,20 +1,23 @@
 import streamlit as st
 
-# 사이드바
+# -----------------------------
+# 공통 사이드바 (1회 호출)
+# -----------------------------
 from utils.sidebar import render_sidebar
 render_sidebar()
 
-# 🔴 반드시 필요
+# -----------------------------
+# 데이터 파서
+# -----------------------------
 from utils.parser_seteuk import load_seteuk
 from utils.parser_haengteuk import load_haengteuk
 from utils.parser_changche import load_changche
 
 
 st.set_page_config(
-    page_title="생기부 상담보고서",
+    page_title="생기부 기반 상담보고서",
     layout="wide",
 )
-
 
 # -----------------------------
 # 📘 페이지 본문
@@ -22,40 +25,42 @@ st.set_page_config(
 st.title("📘 생기부 기반 상담 보고서")
 
 st.markdown("""
-학생의 **세특·행특·창체**를 종합 분석하여  
-자동으로 상담 보고서를 생성합니다.
+세특·행특·창체 파일을 업로드하면  
+학생별 상담 보고서를 자동으로 생성합니다.
 """)
 
-st.info("왼쪽 메뉴를 통해 언제든 다른 업무로 이동할 수 있습니다.")
-
-# ↓ 여기 아래에
-# 파일 업로드 / 학생 선택 / 보고서 생성 코드가 들어가면 됩니다
-
-
 # -----------------------------
-# 1. 파일 업로드 영역
+# 1. 파일 업로드 (한꺼번에)
 # -----------------------------
 st.header("1️⃣ 파일 업로드")
 
-col1, col2, col3 = st.columns(3)
+uploaded_files = st.file_uploader(
+    "세특·행특·창체 파일 3개를 모두 선택하세요",
+    type=["xlsx"],
+    accept_multiple_files=True
+)
 
-with col1:
-    file_seteuk = st.file_uploader("세특 파일 업로드", type=["xlsx"])
+# 파일 분류용 변수
+file_seteuk = None
+file_haeng = None
+file_chang = None
 
-with col2:
-    file_haeng = st.file_uploader("행동특성 파일 업로드", type=["xlsx"])
-
-with col3:
-    file_chang = st.file_uploader("창체 파일 업로드", type=["xlsx"])
-
+if uploaded_files:
+    for f in uploaded_files:
+        if "세특" in f.name:
+            file_seteuk = f
+        elif "행특" in f.name:
+            file_haeng = f
+        elif "창체" in f.name:
+            file_chang = f
 
 # -----------------------------
-# 2. 파일 분석 버튼
+# 2. 명렬 보기 버튼
 # -----------------------------
-if st.button("📊 데이터 분석 시작"):
+if st.button("📋 명렬 보기"):
 
     if not file_seteuk or not file_haeng or not file_chang:
-        st.error("세특·행특·창체 파일을 모두 업로드해주세요.")
+        st.error("❗ 파일명이 '세특 / 행특 / 창체'를 포함한 3개 파일을 모두 업로드해주세요.")
         st.stop()
 
     with st.spinner("데이터 분석 중입니다…"):
@@ -64,7 +69,9 @@ if st.button("📊 데이터 분석 시작"):
         df_haeng = load_haengteuk(file_haeng)
         df_chang = load_changche(file_chang)
 
-        # 학생 리스트 생성
+        # -----------------------------
+        # 학생 명단 생성
+        # -----------------------------
         df_students = (
             df_seteuk[["번호", "성명"]]
             .drop_duplicates()
@@ -76,74 +83,79 @@ if st.button("📊 데이터 분석 시작"):
             lambda x: x[0] + "ㅇ" + x[-1] if len(x) >= 3 else x
         )
 
-        st.success("데이터 분석이 완료되었습니다!")
+    st.success("명렬을 불러왔습니다.")
 
-        st.subheader("📋 학생 명단")
+    st.subheader("📋 학생 명렬")
 
-        # 표시할 테이블
-        st.dataframe(df_students[["번호", "마스킹이름"]])
+    st.dataframe(
+        df_students[["번호", "마스킹이름"]],
+        use_container_width=True
+    )
 
+    # -----------------------------
+    # 학생 선택
+    # -----------------------------
+    selected_no = st.selectbox(
+        "보고서를 생성할 학생 번호를 선택하세요.",
+        df_students["번호"].unique()
+    )
 
-        # 학생 선택
-        selected_no = st.selectbox(
-            "보고서를 생성할 학생 번호를 선택하세요.",
-            df_students["번호"].unique()
-        )
+    student_name = df_students[df_students["번호"] == selected_no]["성명"].iloc[0]
+    masked_name = df_students[df_students["번호"] == selected_no]["마스킹이름"].iloc[0]
 
-        student_name = df_students[df_students["번호"] == selected_no]["성명"].iloc[0]
-        masked_name = df_students[df_students["번호"] == selected_no]["마스킹이름"].iloc[0]
+    # 학생별 데이터 필터링
+    stu_seteuk = df_seteuk[df_seteuk["번호"] == selected_no]
+    stu_haeng = df_haeng[df_haeng["번호"] == selected_no]
+    stu_chang = df_chang[df_chang["번호"] == selected_no]
 
-        # 학생 데이터 필터링
-        stu_seteuk = df_seteuk[df_seteuk["번호"] == selected_no]
-        stu_haeng = df_haeng[df_haeng["번호"] == selected_no]
-        stu_chang = df_chang[df_chang["번호"] == selected_no]
+    # -----------------------------
+    # 3. 1개년 이상 여부 확인
+    # -----------------------------
+    years = set()
 
+    if "학년" in stu_seteuk:
+        years.update(stu_seteuk["학년"].dropna().unique())
 
-        # -----------------------------
-        # 3. 1개년 이상 여부 확인
-        # -----------------------------
-        years = set()
+    if "학년" in stu_haeng:
+        years.update(stu_haeng["학년"].dropna().unique())
 
-        if "학년" in stu_seteuk:
-            years.update(stu_seteuk["학년"].dropna().unique())
+    if "학년" in stu_chang:
+        years.update(stu_chang["학년"].dropna().unique())
 
-        if "학년" in stu_haeng:
-            years.update(stu_haeng["학년"].dropna().unique())
+    if len(years) < 2:
+        st.error("⚠️ 1개년 이상의 기록이 없어 보고서를 생성할 수 없습니다.")
+        st.stop()
 
-        if "학년" in stu_chang:
-            years.update(stu_chang["학년"].dropna().unique())
+    # -----------------------------
+    # 4. 보고서 생성
+    # -----------------------------
+    st.header("📄 보고서 생성")
 
-        if len(years) < 2:
-            st.error("⚠️ 1개년 이상의 기록이 없어 보고서를 생성할 수 없습니다.")
-            st.stop()
+    if st.button("🧠 AI 상담 보고서 만들기"):
 
+        with st.spinner("보고서를 생성하고 있습니다…"):
 
-        # -----------------------------
-        # 4. 보고서 생성
-        # -----------------------------
-        st.header("📄 보고서 생성")
-
-        if st.button("🧠 AI 상담 보고서 만들기"):
-
-            with st.spinner("보고서를 생성하고 있습니다…"):
-
-                report_text = generate_report_text(
-                    name=masked_name,
-                    number=selected_no,
-                    df_seteuk=stu_seteuk,
-                    df_haeng=stu_haeng,
-                    df_chang=stu_chang
-                )
-
-                pdf_bytes = generate_report_pdf(report_text)
-
-            st.success("보고서가 생성되었습니다!")
-
-            st.download_button(
-                label="📥 PDF 다운로드",
-                data=pdf_bytes,
-                file_name=f"{selected_no}_{masked_name}_상담보고서.pdf",
-                mime="application/pdf"
+            report_text = generate_report_text(
+                name=masked_name,
+                number=selected_no,
+                df_seteuk=stu_seteuk,
+                df_haeng=stu_haeng,
+                df_chang=stu_chang
             )
 
-            st.text_area("생성된 보고서 미리보기", report_text, height=400)
+            pdf_bytes = generate_report_pdf(report_text)
+
+        st.success("보고서가 생성되었습니다!")
+
+        st.download_button(
+            label="📥 PDF 다운로드",
+            data=pdf_bytes,
+            file_name=f"{selected_no}_{masked_name}_상담보고서.pdf",
+            mime="application/pdf"
+        )
+
+        st.text_area(
+            "생성된 보고서 미리보기",
+            report_text,
+            height=400
+        )

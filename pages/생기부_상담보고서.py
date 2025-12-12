@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from utils.ai_report_generator import generate_sh_insight_report
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -150,34 +151,29 @@ if "students_table" in st.session_state:
 
     selected_students = edited_df[edited_df["선택"] == True]
 
-    if st.button("🧠 선택 학생 보고서 생성"):
+if st.button("🧠 선택 학생 보고서 생성"):
 
-        if selected_students.empty:
-            st.warning("보고서를 생성할 학생을 한 명 이상 선택하세요.")
-            st.stop()
+    if selected_students.empty:
+        st.warning("보고서를 생성할 학생을 선택하세요.")
+        st.stop()
 
-        reports = []
+    # 예시: 첫 번째 학생만 생성 (나중에 반복 가능)
+    row = selected_students.iloc[0]
 
-        for _, row in selected_students.iterrows():
-            report_text = f"""
-학생 상담 보고서
+    with st.spinner("AI 상담 보고서를 생성 중입니다…"):
 
-학번: {row['학번']}
-성명: {row['성명']}
+        report = generate_sh_insight_report(
+            student_id=row["학번"],
+            masked_name=row["성명"],
+            year_count=3,  # ← 앞에서 계산한 값으로 교체 가능
+            seteuk_text=stu_seteuk_text,      # 세특 텍스트 정리본
+            haengteuk_text=stu_haeng_text,    # 행특 텍스트 정리본
+            changche_text=stu_chang_text,     # 창체 텍스트 정리본
+        )
 
-[종합 평가]
-본 학생은 학교생활 전반에서 성실한 태도를 보이며 …
+    st.session_state["report"] = report
+    st.success("SH-Insight 보고서 생성 완료")
 
-[맞춤형 성장 제안]
-학습 태도 개선 및 진로 연계 활동을 권장함.
-"""
-            reports.append(report_text)
-
-        full_report = "\n\n".join(reports)
-
-        st.session_state["report_text"] = full_report
-
-        st.success("보고서가 생성되었습니다.")
 
 # -----------------------------
 # 5. 보고서 출력 + PDF 다운로드

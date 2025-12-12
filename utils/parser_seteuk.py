@@ -1,6 +1,8 @@
 import pandas as pd
 from openpyxl import load_workbook
 
+from openpyxl import load_workbook
+
 def load_seteuk(file):
     """세부능력 및 특기사항을 병합셀에서 추출하여 DF로 구성."""
 

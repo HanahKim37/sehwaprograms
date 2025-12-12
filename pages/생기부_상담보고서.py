@@ -69,17 +69,13 @@ if st.button("📋 명렬 보기"):
                 df["번호"] = df["번호"].astype(str).str.strip()
 
         # -----------------------------
-        # ⭐ 학생 명렬 생성 (핵심 수정)
+        # 학생 명렬 생성 (세 파일 통합)
         # -----------------------------
         student_frames = []
 
         for df in [df_seteuk, df_haeng, df_chang]:
             if {"번호", "성명"}.issubset(df.columns):
                 student_frames.append(df[["번호", "성명"]])
-
-        if not student_frames:
-            st.error("학생 번호/성명 컬럼을 찾을 수 없습니다. 파일 구조를 확인해주세요.")
-            st.stop()
 
         df_students = (
             pd.concat(student_frames)
@@ -89,35 +85,61 @@ if st.button("📋 명렬 보기"):
         )
 
         if df_students.empty:
-            st.error("학생 명렬을 생성할 수 없습니다. 원본 파일 내용을 확인해주세요.")
+            st.error("학생 명렬을 생성할 수 없습니다.")
             st.stop()
 
-        df_students["마스킹이름"] = df_students["성명"].apply(
+        # 이름 마스킹
+        df_students["성명"] = df_students["성명"].apply(
             lambda x: x[0] + "ㅇ" + x[-1] if isinstance(x, str) and len(x) >= 3 else x
         )
+
+        # -----------------------------
+        # 화면용 컬럼 구성
+        # -----------------------------
+        df_view = pd.DataFrame({
+            "선택": [False] * len(df_students),
+            "No": range(1, len(df_students) + 1),
+            "학번": df_students["번호"],
+            "성명": df_students["성명"],
+        })
 
     st.success("명렬을 불러왔습니다.")
 
     st.subheader("📋 학생 명렬")
-    st.dataframe(
-        df_students[["번호", "마스킹이름"]],
-        use_container_width=True
+
+    # -----------------------------
+    # 전체 선택 버튼
+    # -----------------------------
+    col_btn, _ = st.columns([1, 5])
+    with col_btn:
+        if st.button("✅ 전체 선택"):
+            df_view["선택"] = True
+
+    # -----------------------------
+    # 체크박스 테이블
+    # -----------------------------
+    edited_df = st.data_editor(
+        df_view,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "선택": st.column_config.CheckboxColumn("선택"),
+            "No": st.column_config.NumberColumn("No", disabled=True),
+            "학번": st.column_config.TextColumn("학번", disabled=True),
+            "성명": st.column_config.TextColumn("성명", disabled=True),
+        },
+        disabled=["No", "학번", "성명"]
     )
 
     # -----------------------------
-    # 학생 선택
+    # 선택된 학생 추출
     # -----------------------------
-    selected_no = st.selectbox(
-        "보고서를 생성할 학생 번호를 선택하세요.",
-        df_students["번호"].tolist()
-    )
+    selected_students = edited_df[edited_df["선택"] == True]
 
-    selected_row = df_students[df_students["번호"] == selected_no]
-
-    if selected_row.empty:
-        st.error("선택한 학생 정보를 찾을 수 없습니다.")
-        st.stop()
-
-    masked_name = selected_row["마스킹이름"].iloc[0]
-
-    st.success(f"선택된 학생: {masked_name}")
+    if not selected_students.empty:
+        st.markdown("### ✅ 선택된 학생")
+        st.dataframe(
+            selected_students[["학번", "성명"]],
+            hide_index=True,
+            use_container_width=True
+        )

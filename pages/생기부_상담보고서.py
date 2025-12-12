@@ -24,7 +24,7 @@ st.title("📘 생기부 기반 상담 보고서")
 
 st.markdown("""
 세특·행특·창체 파일을 업로드하면  
-학생별 상담 보고서를 자동으로 생성합니다.
+학생을 선택해 상담 보고서를 생성할 수 있습니다.
 """)
 
 # -----------------------------
@@ -50,7 +50,7 @@ if uploaded_files:
             file_chang = f
 
 # -----------------------------
-# 2. 명렬 보기
+# 2. 명렬 불러오기
 # -----------------------------
 if st.button("📋 명렬 보기"):
 
@@ -63,29 +63,32 @@ if st.button("📋 명렬 보기"):
         df_haeng = load_haengteuk(file_haeng)
         df_chang = load_changche(file_chang)
 
-        # 번호 컬럼 문자열 통일
+        # 번호 컬럼 통일
         for df in [df_seteuk, df_haeng, df_chang]:
             if "번호" in df.columns:
                 df["번호"] = df["번호"].astype(str).str.strip()
 
         # -----------------------------
-        # 학생 명렬 생성 (세 파일 통합)
+        # 학생 명렬 생성 (3개 파일 통합)
         # -----------------------------
-        student_frames = []
-
+        frames = []
         for df in [df_seteuk, df_haeng, df_chang]:
             if {"번호", "성명"}.issubset(df.columns):
-                student_frames.append(df[["번호", "성명"]])
+                frames.append(df[["번호", "성명"]])
 
         df_students = (
-            pd.concat(student_frames)
+            pd.concat(frames)
             .dropna()
             .drop_duplicates()
-            .reset_index(drop=True)
         )
 
+        # 🔴 헤더/가짜 행 제거 (핵심)
+        df_students = df_students[
+            df_students["번호"].str.isdigit()
+        ]
+
         if df_students.empty:
-            st.error("학생 명렬을 생성할 수 없습니다.")
+            st.error("학생 명렬을 생성할 수 없습니다. 파일 구조를 확인해주세요.")
             st.stop()
 
         # 이름 마스킹
@@ -93,53 +96,62 @@ if st.button("📋 명렬 보기"):
             lambda x: x[0] + "ㅇ" + x[-1] if isinstance(x, str) and len(x) >= 3 else x
         )
 
-        # -----------------------------
-        # 화면용 컬럼 구성
-        # -----------------------------
+        # 화면용 테이블
         df_view = pd.DataFrame({
-            "선택": [False] * len(df_students),
+            "선택": False,
             "No": range(1, len(df_students) + 1),
-            "학번": df_students["번호"],
-            "성명": df_students["성명"],
+            "학번": df_students["번호"].values,
+            "성명": df_students["성명"].values,
         })
+
+        # session_state에 저장 (⭐ 중요)
+        st.session_state["students_table"] = df_view
 
     st.success("명렬을 불러왔습니다.")
 
+# -----------------------------
+# 3. 명렬 표시 (상태 유지)
+# -----------------------------
+if "students_table" in st.session_state:
+
     st.subheader("📋 학생 명렬")
 
-    # -----------------------------
     # 전체 선택 버튼
-    # -----------------------------
-    col_btn, _ = st.columns([1, 5])
-    with col_btn:
+    col1, col2 = st.columns([1, 7])
+    with col1:
         if st.button("✅ 전체 선택"):
-            df_view["선택"] = True
+            st.session_state["students_table"]["선택"] = True
 
-    # -----------------------------
-    # 체크박스 테이블
-    # -----------------------------
     edited_df = st.data_editor(
-        df_view,
+        st.session_state["students_table"],
         hide_index=True,
         use_container_width=True,
         column_config={
-            "선택": st.column_config.CheckboxColumn("선택"),
-            "No": st.column_config.NumberColumn("No", disabled=True),
-            "학번": st.column_config.TextColumn("학번", disabled=True),
-            "성명": st.column_config.TextColumn("성명", disabled=True),
+            "선택": st.column_config.CheckboxColumn("선택", width="small"),
+            "No": st.column_config.NumberColumn("No", width="small", disabled=True),
+            "학번": st.column_config.TextColumn("학번", width="medium", disabled=True),
+            "성명": st.column_config.TextColumn("성명", width="large", disabled=True),
         },
         disabled=["No", "학번", "성명"]
     )
 
+    # 상태 업데이트
+    st.session_state["students_table"] = edited_df
+
     # -----------------------------
-    # 선택된 학생 추출
+    # 4. 보고서 생성 버튼
     # -----------------------------
+    st.divider()
+    st.header("📄 보고서 생성")
+
     selected_students = edited_df[edited_df["선택"] == True]
 
-    if not selected_students.empty:
-        st.markdown("### ✅ 선택된 학생")
-        st.dataframe(
-            selected_students[["학번", "성명"]],
-            hide_index=True,
-            use_container_width=True
-        )
+    st.write(f"선택된 학생 수: **{len(selected_students)}명**")
+
+    if st.button("🧠 선택 학생 보고서 생성"):
+
+        if selected_students.empty:
+            st.warning("보고서를 생성할 학생을 한 명 이상 선택하세요.")
+            st.stop()
+
+        st.success("👉 다음 단계: 선택된 학생별 보고서 생성 로직으로 진행")

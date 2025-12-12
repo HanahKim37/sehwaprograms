@@ -1,74 +1,26 @@
 import streamlit as st
 
 def render_sidebar():
-    # ----- 페이지 이동 함수 -----
-    def go(page_name):
-        st.switch_page(page_name)
+    st.sidebar.markdown("## 📂 부서별 메뉴")
+    st.sidebar.markdown("---")
 
-    # ----- 사이드바 고급 디자인 -----
-    sidebar_style = """
-    <style>
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        padding: 20px;
-    }
-    .sidebar-title {
-        font-size: 20px; 
-        font-weight: 700;
-        margin-bottom: 15px;
-        color: #333;
-    }
-    </style>
-    """
-    st.markdown(sidebar_style, unsafe_allow_html=True)
+    # ===== 학년부 (실제 이동 가능) =====
+    with st.sidebar.expander("📘 학년부", expanded=True):
+        if st.button("📄 생기부 상담보고서", use_container_width=True):
+            st.switch_page("pages/생기부_상담보고서.py")
 
-    st.sidebar.markdown(
-        '<div class="sidebar-title">📂 부서별 메뉴</div>',
-        unsafe_allow_html=True
-    )
+    # ===== 아래 부서들은 '준비중' =====
+    with st.sidebar.expander("🎓 진로진학부", expanded=False):
+        st.caption("⏳ 준비 중입니다")
 
-    menu = {
-        "교무부": {
-            "시간표 관리": "pages/01_교무부_시간표관리.py",
-            "출결 확인": "pages/02_교무부_출결확인.py",
-            "성적 처리": "pages/03_교무부_성적처리.py",
-        },
-        "진로진학부": {
-            "진학 자료 열람": "pages/04_진로진학부_진학자료열람.py",
-            "상담 기록 관리": "pages/05_진로진학부_상담기록관리.py",
-            "진로 설문 분석": "pages/06_진로진학부_설문분석.py",
-        },
-        "창의인성부": {
-            "봉사활동 관리": "pages/07_창의인성부_봉사관리.py",
-            "프로젝트 관리": "pages/08_창의인성부_프로젝트관리.py",
-            "창의탐구페스티벌": "pages/09_창의인성부_탐구페스티벌.py",
-        },
-        "연구부": {
-            "연구 과제 관리": "pages/10_연구부_과제관리.py",
-            "자료 업로드": "pages/11_연구부_자료업로드.py",
-            "세미나 기록": "pages/12_연구부_세미나기록.py",
-        },
-        "생활안전부": {
-            "생활지도 기록": "pages/13_생활안전부_생활지도기록.py",
-            "상벌점 관리": "pages/14_생활안전부_상벌점관리.py",
-            "안전 점검표": "pages/15_생활안전부_점검표.py",
-        },
-        "학년부": {
-            "생기부 상담보고서": "pages/생기부_상담보고서.py",
-        }
-    }
+    with st.sidebar.expander("🌱 창의인성부", expanded=False):
+        st.caption("⏳ 준비 중입니다")
 
-    icons = {
-        "교무부": "🏫",
-        "진로진학부": "🎓",
-        "창의인성부": "🌱",
-        "연구부": "🔬",
-        "생활안전부": "🛡️",
-        "학년부": "📘",
-    }
+    with st.sidebar.expander("🔬 연구부", expanded=False):
+        st.caption("⏳ 준비 중입니다")
 
-    for dept, items in menu.items():
-        with st.sidebar.expander(f"{icons.get(dept,'')} {dept}", expanded=False):
-            for name, page in items.items():
-                if st.button(f"• {name}", key=f"{dept}_{name}"):
-                    go(page)
+    with st.sidebar.expander("🛡️ 생활안전부", expanded=False):
+        st.caption("⏳ 준비 중입니다")
+
+    st.sidebar.markdown("---")
+    st.sidebar.caption("ⓒ 세화고 업무 지원 시스템")

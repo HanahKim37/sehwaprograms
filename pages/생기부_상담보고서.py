@@ -1,5 +1,8 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 # -----------------------------
 # 공통 사이드바
@@ -21,12 +24,18 @@ st.set_page_config(
 )
 
 # -----------------------------
-# 🔧 CSS: 테이블 가운데 정렬
+# CSS: 표 전체 가운데 정렬
 # -----------------------------
 st.markdown(
     """
     <style>
-    /* 데이터 에디터 전체 가운데 배치 */
+    /* 데이터 에디터 셀 가운데 정렬 */
+    div[data-testid="stDataEditor"] td {
+        text-align: center !important;
+    }
+    div[data-testid="stDataEditor"] th {
+        text-align: center !important;
+    }
     div[data-testid="stDataEditor"] {
         margin-left: auto;
         margin-right: auto;
@@ -80,12 +89,10 @@ if st.button("📋 명렬 보기"):
         df_haeng = load_haengteuk(file_haeng)
         df_chang = load_changche(file_chang)
 
-        # 번호 문자열 통일
         for df in [df_seteuk, df_haeng, df_chang]:
             if "번호" in df.columns:
                 df["번호"] = df["번호"].astype(str).str.strip()
 
-        # 학생 명렬 통합
         frames = []
         for df in [df_seteuk, df_haeng, df_chang]:
             if {"번호", "성명"}.issubset(df.columns):
@@ -97,26 +104,17 @@ if st.button("📋 명렬 보기"):
             .drop_duplicates()
         )
 
-        # 헤더/가짜 행 제거
         df_students = df_students[df_students["번호"].str.isdigit()]
 
-        if df_students.empty:
-            st.error("학생 명렬을 생성할 수 없습니다.")
-            st.stop()
-
-        # 이름 마스킹
         df_students["성명"] = df_students["성명"].apply(
-            lambda x: x[0] + "ㅇ" + x[-1] if isinstance(x, str) and len(x) >= 3 else x
+            lambda x: x[0] + "ㅇ" + x[-1] if len(x) >= 3 else x
         )
 
-        # 화면용 테이블
-        df_view = pd.DataFrame({
+        st.session_state["students_table"] = pd.DataFrame({
             "선택": False,
-            "학번": df_students["번호"].values,
-            "성명": df_students["성명"].values,
+            "학번": df_students["번호"],
+            "성명": df_students["성명"],
         })
-
-        st.session_state["students_table"] = df_view
 
     st.success("명렬을 불러왔습니다.")
 
@@ -127,20 +125,17 @@ if "students_table" in st.session_state:
 
     st.subheader("📋 학생 명렬")
 
-    # 전체 선택 버튼
-    col_btn, _ = st.columns([1, 6])
-    with col_btn:
-        if st.button("✅ 전체 선택"):
-            st.session_state["students_table"]["선택"] = True
+    if st.button("✅ 전체 선택"):
+        st.session_state["students_table"]["선택"] = True
 
     edited_df = st.data_editor(
         st.session_state["students_table"],
         hide_index=True,
         use_container_width=True,
         column_config={
-            "선택": st.column_config.CheckboxColumn("선택", width="small"),
-            "학번": st.column_config.TextColumn("학번", width="medium", disabled=True),
-            "성명": st.column_config.TextColumn("성명", width="medium", disabled=True),
+            "선택": st.column_config.CheckboxColumn("선택"),
+            "학번": st.column_config.TextColumn("학번", disabled=True),
+            "성명": st.column_config.TextColumn("성명", disabled=True),
         },
         disabled=["학번", "성명"]
     )
@@ -155,13 +150,62 @@ if "students_table" in st.session_state:
 
     selected_students = edited_df[edited_df["선택"] == True]
 
-    st.write(f"선택된 학생 수: **{len(selected_students)}명**")
-
     if st.button("🧠 선택 학생 보고서 생성"):
 
         if selected_students.empty:
             st.warning("보고서를 생성할 학생을 한 명 이상 선택하세요.")
             st.stop()
 
+        reports = []
+
         for _, row in selected_students.iterrows():
-            st.success(f"📄 {row['학번']} / {row['성명']} 상담 보고서 생성 완료 (예시)")
+            report_text = f"""
+학생 상담 보고서
+
+학번: {row['학번']}
+성명: {row['성명']}
+
+[종합 평가]
+본 학생은 학교생활 전반에서 성실한 태도를 보이며 …
+
+[맞춤형 성장 제안]
+학습 태도 개선 및 진로 연계 활동을 권장함.
+"""
+            reports.append(report_text)
+
+        full_report = "\n\n".join(reports)
+
+        st.session_state["report_text"] = full_report
+
+        st.success("보고서가 생성되었습니다.")
+
+# -----------------------------
+# 5. 보고서 출력 + PDF 다운로드
+# -----------------------------
+if "report_text" in st.session_state:
+
+    st.subheader("📄 생성된 상담 보고서")
+    st.text_area(
+        "보고서 내용",
+        st.session_state["report_text"],
+        height=400
+    )
+
+    # PDF 생성
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    textobject = c.beginText(40, 800)
+
+    for line in st.session_state["report_text"].split("\n"):
+        textobject.textLine(line)
+
+    c.drawText(textobject)
+    c.save()
+    buffer.seek(0)
+
+    st.download_button(
+        label="📥 PDF 저장",
+        data=buffer,
+        file_name="생기부_상담보고서.pdf",
+        mime="application/pdf"
+    )

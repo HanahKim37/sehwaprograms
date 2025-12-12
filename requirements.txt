@@ -10,11 +10,10 @@ matplotlib>=3.8.4
 pandas>=2.2.2
 numpy>=1.26.4
 streamlit-drawable-canvas
-streamlit
 networkx
 pillow>=10.0
 openai>=1.40.0
 requests>=2.32
-streamlit
 pandas
 openpyxl
+reportlab

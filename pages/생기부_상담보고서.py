@@ -1,72 +1,28 @@
 import streamlit as st
 import pandas as pd
-from utils.ai_report_generator import generate_sh_insight_report
-from io import BytesIO
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
 
-# -----------------------------
-# 공통 사이드바
-# -----------------------------
 from utils.sidebar import render_sidebar
-render_sidebar()
-
-# -----------------------------
-# 데이터 파서
-# -----------------------------
 from utils.parser_seteuk import load_seteuk
 from utils.parser_haengteuk import load_haengteuk
 from utils.parser_changche import load_changche
+from utils.text_builder import build_text
+from utils.ai_report_generator import generate_sh_insight_report
 
+st.set_page_config(page_title="SH-Insight 상담보고서", layout="wide")
+render_sidebar()
 
-st.set_page_config(
-    page_title="생기부 기반 상담보고서",
-    layout="wide",
-)
-
-# -----------------------------
-# CSS: 표 전체 가운데 정렬
-# -----------------------------
-st.markdown(
-    """
-    <style>
-    /* 데이터 에디터 셀 가운데 정렬 */
-    div[data-testid="stDataEditor"] td {
-        text-align: center !important;
-    }
-    div[data-testid="stDataEditor"] th {
-        text-align: center !important;
-    }
-    div[data-testid="stDataEditor"] {
-        margin-left: auto;
-        margin-right: auto;
-        max-width: 900px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-st.title("📘 생기부 기반 상담 보고서")
-
-st.markdown("""
-세특·행특·창체 파일을 업로드한 뒤  
-학생을 선택하여 상담 보고서를 생성합니다.
-""")
+st.title("📘 SH-Insight 생기부 기반 상담 보고서")
 
 # -----------------------------
-# 1. 파일 업로드
+# 파일 업로드
 # -----------------------------
-st.header("1️⃣ 파일 업로드")
-
 uploaded_files = st.file_uploader(
-    "세특·행특·창체 파일 3개를 모두 선택하세요",
+    "세특·행특·창체 파일 3개 업로드",
     type=["xlsx"],
     accept_multiple_files=True
 )
 
 file_seteuk = file_haeng = file_chang = None
-
 if uploaded_files:
     for f in uploaded_files:
         if "세특" in f.name:
@@ -77,131 +33,79 @@ if uploaded_files:
             file_chang = f
 
 # -----------------------------
-# 2. 명렬 불러오기
+# 명렬 보기
 # -----------------------------
 if st.button("📋 명렬 보기"):
-
-    if not file_seteuk or not file_haeng or not file_chang:
-        st.error("❗ 파일명에 '세특 / 행특 / 창체'가 포함된 파일 3개를 모두 업로드해주세요.")
+    if not all([file_seteuk, file_haeng, file_chang]):
+        st.error("세특·행특·창체 파일을 모두 업로드하세요.")
         st.stop()
 
-    with st.spinner("데이터 분석 중입니다…"):
-        df_seteuk = load_seteuk(file_seteuk)
-        df_haeng = load_haengteuk(file_haeng)
-        df_chang = load_changche(file_chang)
+    df_seteuk = load_seteuk(file_seteuk)
+    df_haeng = load_haengteuk(file_haeng)
+    df_chang = load_changche(file_chang)
 
-        for df in [df_seteuk, df_haeng, df_chang]:
-            if "번호" in df.columns:
-                df["번호"] = df["번호"].astype(str).str.strip()
+    frames = []
+    for df in [df_seteuk, df_haeng, df_chang]:
+        if {"번호", "성명"}.issubset(df.columns):
+            df["번호"] = df["번호"].astype(str).str.strip()
+            frames.append(df[["번호", "성명"]])
 
-        frames = []
-        for df in [df_seteuk, df_haeng, df_chang]:
-            if {"번호", "성명"}.issubset(df.columns):
-                frames.append(df[["번호", "성명"]])
-
-        df_students = (
-            pd.concat(frames)
-            .dropna()
-            .drop_duplicates()
-        )
-
-        df_students = df_students[df_students["번호"].str.isdigit()]
-
-        df_students["성명"] = df_students["성명"].apply(
-            lambda x: x[0] + "ㅇ" + x[-1] if len(x) >= 3 else x
-        )
-
-        st.session_state["students_table"] = pd.DataFrame({
-            "선택": False,
-            "학번": df_students["번호"],
-            "성명": df_students["성명"],
-        })
-
-    st.success("명렬을 불러왔습니다.")
-
-# -----------------------------
-# 3. 명렬 표시
-# -----------------------------
-if "students_table" in st.session_state:
-
-    st.subheader("📋 학생 명렬")
-
-    if st.button("✅ 전체 선택"):
-        st.session_state["students_table"]["선택"] = True
-
-    edited_df = st.data_editor(
-        st.session_state["students_table"],
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "선택": st.column_config.CheckboxColumn("선택"),
-            "학번": st.column_config.TextColumn("학번", disabled=True),
-            "성명": st.column_config.TextColumn("성명", disabled=True),
-        },
-        disabled=["학번", "성명"]
+    df_students = (
+        pd.concat(frames)
+        .drop_duplicates()
+        .query("번호.str.isdigit()", engine="python")
     )
 
-    st.session_state["students_table"] = edited_df
+    df_students["성명"] = df_students["성명"].apply(
+        lambda x: x[0] + "ㅇ" + x[-1] if len(x) >= 3 else x
+    )
 
-    # -----------------------------
-    # 4. 보고서 생성
-    # -----------------------------
-    st.divider()
-    st.header("📄 보고서 생성")
+    st.session_state["students"] = df_students
 
-    selected_students = edited_df[edited_df["선택"] == True]
+# -----------------------------
+# 명렬 출력 (가운데 정렬)
+# -----------------------------
+if "students" in st.session_state:
 
-if st.button("🧠 선택 학생 보고서 생성"):
+    styled = (
+        st.session_state["students"]
+        .style
+        .set_properties(**{"text-align": "center"})
+    )
 
-    if selected_students.empty:
-        st.warning("보고서를 생성할 학생을 선택하세요.")
-        st.stop()
+    st.dataframe(styled, width=600)
 
-    # 예시: 첫 번째 학생만 생성 (나중에 반복 가능)
-    row = selected_students.iloc[0]
+    selected_id = st.selectbox(
+        "보고서 생성 학생 선택",
+        st.session_state["students"]["번호"]
+    )
 
-    with st.spinner("AI 상담 보고서를 생성 중입니다…"):
+    if st.button("🧠 보고서 생성"):
+
+        stu_seteuk = df_seteuk[df_seteuk["번호"] == selected_id]
+        stu_haeng = df_haeng[df_haeng["번호"] == selected_id]
+        stu_chang = df_chang[df_chang["번호"] == selected_id]
+
+        seteuk_text = build_text(stu_seteuk)
+        haeng_text = build_text(stu_haeng)
+        chang_text = build_text(stu_chang)
 
         report = generate_sh_insight_report(
-            student_id=row["학번"],
-            masked_name=row["성명"],
-            year_count=3,  # ← 앞에서 계산한 값으로 교체 가능
-            seteuk_text=stu_seteuk_text,      # 세특 텍스트 정리본
-            haengteuk_text=stu_haeng_text,    # 행특 텍스트 정리본
-            changche_text=stu_chang_text,     # 창체 텍스트 정리본
+            student_id=selected_id,
+            masked_name=st.session_state["students"]
+                .query("번호 == @selected_id")["성명"].iloc[0],
+            year_count=3,
+            seteuk_text=seteuk_text,
+            haengteuk_text=haeng_text,
+            changche_text=chang_text,
         )
 
-    st.session_state["report"] = report
-    st.success("SH-Insight 보고서 생성 완료")
-
+        st.session_state["report"] = report
+        st.success("SH-Insight 보고서 생성 완료")
 
 # -----------------------------
-# 5. 보고서 출력 + PDF 다운로드
+# 보고서 출력 (다음 단계)
 # -----------------------------
-if "report_text" in st.session_state:
-
-    st.subheader("📄 생성된 상담 보고서")
-    st.text_area(
-        "보고서 내용",
-        st.session_state["report_text"],
-        height=400
-    )
-
-    # PDF 생성
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    textobject = c.beginText(40, 800)
-
-    for line in st.session_state["report_text"].split("\n"):
-        textobject.textLine(line)
-
-    c.drawText(textobject)
-    c.save()
-    buffer.seek(0)
-
-    st.download_button(
-        label="📥 PDF 저장",
-        data=buffer,
-        file_name="생기부_상담보고서.pdf",
-        mime="application/pdf"
-    )
+if "report" in st.session_state:
+    st.subheader("📄 생성된 SH-Insight 보고서 (JSON)")
+    st.json(st.session_state["report"])

@@ -2,6 +2,7 @@ import streamlit as st
 
 # 사이드바
 from utils.sidebar import render_sidebar
+render_sidebar()
 
 # 🔴 반드시 필요
 from utils.parser_seteuk import load_seteuk

@@ -1,17 +1,15 @@
 import json
-import openai
 import streamlit as st
+import openai
 
-# API Key 로드
 openai.api_key = st.secrets["OPENAI_API_KEY"]
-
 
 SYSTEM_PROMPT = """
 너는 대한민국 고등학교 생활기록부를 분석하는
 전문 진로·학업 컨설턴트이자 교사 보조 AI이다.
 
 너의 역할은 학생의 세특, 행특, 창체 기록을 종합 분석하여
-‘교사가 작성한 것처럼 자연스럽고 공적인 문체(~함, ~보임)’로
+교사가 작성한 것처럼 공적인 문체(~함, ~보임)로
 SH-Insight 심층 분석 보고서를 작성하는 것이다.
 
 [작성 원칙]
@@ -22,7 +20,6 @@ SH-Insight 심층 분석 보고서를 작성하는 것이다.
 5. 결과는 반드시 JSON 형식
 6. JSON 외 텍스트 출력 금지
 """
-
 
 def generate_sh_insight_report(
     student_id: str,
@@ -47,7 +44,7 @@ def generate_sh_insight_report(
 [창의적 체험활동]
 {changche_text}
 
-[보고서 작성 요청]
+[요청]
 지정된 JSON 스키마를 정확히 따르는
 SH-Insight 심층 분석 보고서를 작성하라.
 """
@@ -63,7 +60,4 @@ SH-Insight 심층 분석 보고서를 작성하라.
 
     content = response.choices[0].message["content"]
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        raise ValueError("AI 응답이 올바른 JSON 형식이 아닙니다.")
+    return json.loads(content)

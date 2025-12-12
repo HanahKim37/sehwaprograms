@@ -1,19 +1,29 @@
 import streamlit as st
-import pandas as pd
-from utils.parser_changche import load_changche
-from utils.parser_haengteuk import load_haengteuk
-from utils.parser_seteuk import load_seteuk
-from utils.report_generator import generate_report_pdf, generate_report_text
+from utils.sidebar import render_sidebar
 
-st.set_page_config(page_title="생기부 상담 보고서", layout="wide")
+st.set_page_config(
+    page_title="생기부 상담보고서",
+    layout="wide",
+)
 
-st.title("📘 생기부 기반 상담 보고서 생성기")
+# ✅ 반드시 다시 호출
+render_sidebar()
+
+# -----------------------------
+# 📘 페이지 본문
+# -----------------------------
+st.title("📘 생기부 기반 상담 보고서")
 
 st.markdown("""
-학생의 **세특·행특·창체**를 기반으로  
-자동으로 상담 보고서를 생성하는 시스템입니다.
----
+학생의 **세특·행특·창체**를 종합 분석하여  
+자동으로 상담 보고서를 생성합니다.
 """)
+
+st.info("왼쪽 메뉴를 통해 언제든 다른 업무로 이동할 수 있습니다.")
+
+# ↓ 여기 아래에
+# 파일 업로드 / 학생 선택 / 보고서 생성 코드가 들어가면 됩니다
+
 
 # -----------------------------
 # 1. 파일 업로드 영역

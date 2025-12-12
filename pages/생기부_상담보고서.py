@@ -1,7 +1,8 @@
 import streamlit as st
+import pandas as pd
 
 # -----------------------------
-# 공통 사이드바 (1회 호출)
+# 공통 사이드바
 # -----------------------------
 from utils.sidebar import render_sidebar
 render_sidebar()
@@ -19,9 +20,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# -----------------------------
-# 📘 페이지 본문
-# -----------------------------
 st.title("📘 생기부 기반 상담 보고서")
 
 st.markdown("""
@@ -30,7 +28,7 @@ st.markdown("""
 """)
 
 # -----------------------------
-# 1. 파일 업로드 (한꺼번에)
+# 1. 파일 업로드
 # -----------------------------
 st.header("1️⃣ 파일 업로드")
 
@@ -40,18 +38,15 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-file_seteuk = None
-file_haeng = None
-file_chang = None
+file_seteuk = file_haeng = file_chang = None
 
 if uploaded_files:
     for f in uploaded_files:
-        fname = f.name
-        if "세특" in fname:
+        if "세특" in f.name:
             file_seteuk = f
-        elif "행특" in fname:
+        elif "행특" in f.name:
             file_haeng = f
-        elif "창체" in fname:
+        elif "창체" in f.name:
             file_chang = f
 
 # -----------------------------
@@ -64,25 +59,38 @@ if st.button("📋 명렬 보기"):
         st.stop()
 
     with st.spinner("데이터 분석 중입니다…"):
-
         df_seteuk = load_seteuk(file_seteuk)
         df_haeng = load_haengteuk(file_haeng)
         df_chang = load_changche(file_chang)
 
-        # 번호 컬럼 타입 통일 (⭐ 중요)
+        # 번호 컬럼 문자열 통일
         for df in [df_seteuk, df_haeng, df_chang]:
             if "번호" in df.columns:
                 df["번호"] = df["번호"].astype(str).str.strip()
 
         # -----------------------------
-        # 학생 명렬 생성
+        # ⭐ 학생 명렬 생성 (핵심 수정)
         # -----------------------------
+        student_frames = []
+
+        for df in [df_seteuk, df_haeng, df_chang]:
+            if {"번호", "성명"}.issubset(df.columns):
+                student_frames.append(df[["번호", "성명"]])
+
+        if not student_frames:
+            st.error("학생 번호/성명 컬럼을 찾을 수 없습니다. 파일 구조를 확인해주세요.")
+            st.stop()
+
         df_students = (
-            df_seteuk[["번호", "성명"]]
+            pd.concat(student_frames)
             .dropna()
             .drop_duplicates()
             .reset_index(drop=True)
         )
+
+        if df_students.empty:
+            st.error("학생 명렬을 생성할 수 없습니다. 원본 파일 내용을 확인해주세요.")
+            st.stop()
 
         df_students["마스킹이름"] = df_students["성명"].apply(
             lambda x: x[0] + "ㅇ" + x[-1] if isinstance(x, str) and len(x) >= 3 else x
@@ -107,33 +115,9 @@ if st.button("📋 명렬 보기"):
     selected_row = df_students[df_students["번호"] == selected_no]
 
     if selected_row.empty:
-        st.error("선택한 학생 정보를 찾을 수 없습니다. 데이터 구조를 확인해주세요.")
+        st.error("선택한 학생 정보를 찾을 수 없습니다.")
         st.stop()
 
-    student_name = selected_row["성명"].iloc[0]
     masked_name = selected_row["마스킹이름"].iloc[0]
 
-    # -----------------------------
-    # 학생별 데이터 필터링
-    # -----------------------------
-    stu_seteuk = df_seteuk[df_seteuk["번호"] == selected_no]
-    stu_haeng = df_haeng[df_haeng["번호"] == selected_no]
-    stu_chang = df_chang[df_chang["번호"] == selected_no]
-
-    # -----------------------------
-    # 3. 1개년 이상 여부 확인
-    # -----------------------------
-    years = set()
-
-    for df in [stu_seteuk, stu_haeng, stu_chang]:
-        if "학년" in df.columns:
-            years.update(df["학년"].dropna().unique())
-
-    if len(years) < 2:
-        st.error("⚠️ 1개년 이상의 기록이 없어 보고서를 생성할 수 없습니다.")
-        st.stop()
-
-    # -----------------------------
-    # 4. 보고서 생성 (다음 단계)
-    # -----------------------------
-    st.info("다음 단계: AI 상담 보고서 생성")
+    st.success(f"선택된 학생: {masked_name}")

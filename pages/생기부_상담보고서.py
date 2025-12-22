@@ -1,156 +1,204 @@
-import json
 import streamlit as st
-from openai import OpenAI
+import pandas as pd
 
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+from utils.sidebar import render_sidebar
+from utils.parser_seteuk import load_seteuk
+from utils.parser_haengteuk import load_haengteuk
+from utils.parser_changche import load_changche
+from utils.ai_report_generator import generate_sh_insight_report
 
-SYSTEM_PROMPT = """
-너는 대한민국 고등학교 생활기록부를 분석하는 전문 진로·학업 컨설턴트이자 교사 보조 AI이다.
+from utils.report_chart import setup_matplotlib_korean_font, render_radar_chart_to_streamlit
+from utils.report_pdf import build_pdf_bytes
+from utils.report_ui import inject_report_css, render_report_modal
 
-목표:
-- 학생의 세특/행특/창체 원문을 근거로,
-- 교사가 작성한 것처럼 공적인 문체(~함, ~보임)로,
-- 풍부하고 구체적인 SH-Insight 심층 분석 보고서를 작성한다.
+st.set_page_config(page_title="SH-Insight 상담보고서", layout="wide")
+render_sidebar()
+inject_report_css(st)
+setup_matplotlib_korean_font()
 
-핵심 규칙(매우 중요):
-1) 허위 사실 생성 금지:
-   - 원문에 없는 사실을 '했다/참여했다/수상했다/시간이 몇 시간이다/직책을 맡았다'처럼 단정하지 말 것.
-   - 추정이 필요할 때는 "기록상 확인되는 범위에서"처럼 조건부로 표현.
-
-2) 근거 문장 품질:
-   - "평가 근거 문장"은 반드시 원문에서 발췌한 짧은 문장/구절(가능하면 따옴표 없이 그대로)로 3~6개 제시.
-   - 의미 없는 숫자/학번/중복 텍스트를 근거로 쓰지 말 것.
-
-3) 빈약 방지:
-   - "기록이 없음"만 쓰지 말고, 어떤 정보가 부족해 어떤 판단이 제한되는지까지 서술.
-   - 각 '분석'은 최소 4~6문장, '종합 평가'는 최소 6~10문장 수준으로 구체화.
-
-4) 산출 형식:
-   - 반드시 JSON만 출력 (JSON 외 텍스트 금지).
-   - 아래 스키마의 키/구조를 절대 바꾸지 말 것.
-
-[반드시 이 출력 스키마를 그대로 사용]
-{
-  "학생 정보": {"학번": "...", "성명": "...", "학년 수": 0},
-  "종합 평가": "문단(풍부하게)",
-  "핵심 강점": ["...", "...", "...", "..."],
-  "보완 추천 영역": ["...", "..."],
-  "3대 평가 항목별 상세 분석": {
-    "학업역량": {"점수": 0, "평가 근거 문장": ["..."], "분석": "문단(풍부)"},
-    "학업태도": {"점수": 0, "평가 근거 문장": ["..."], "분석": "문단(풍부)"},
-    "학업 외 소양": {"점수": 0, "평가 근거 문장": ["..."], "분석": "문단(풍부)"}
-  },
-  "영역별 심화 탐구 주제 제안": {
-    "자율": "주제+설명(풍부)",
-    "진로": "주제+설명(풍부)",
-    "동아리": "주제+설명(풍부)"
-  },
-  "역량 기반 추천 학과": [
-    {"학과": "의예과/의학과", "근거": "근거(원문 기반)"},
-    {"학과": "기초의과학과", "근거": "근거(원문 기반)"},
-    {"학과": "보건행정학과", "근거": "근거(원문 기반)"}
-  ],
-  "맞춤형 성장 제안": {
-    "생활기록부 중점 보완 전략": "문단(풍부)",
-    "추천 학교 행사": ["행사1: 이유", "행사2: 이유"],
-    "추천 활동 설계": ["활동1: 산출물/방법", "활동2: 산출물/방법"]
-  },
-  "추천 도서": [
-    {"분류": "약점 보완", "도서": "...", "저자": "...", "추천 이유": "..."},
-    {"분류": "관심사 심화", "도서": "...", "저자": "...", "추천 이유": "..."},
-    {"분류": "희망 진로 연계", "도서": "...", "저자": "...", "추천 이유": "..."}
-  ]
-}
-""".strip()
+st.title("📘 생기부 기반 상담 보고서 (SH-Insight)")
+st.markdown("세특·행특·창체 파일을 업로드하고 학생을 선택해 상담 보고서를 생성합니다.")
 
 
-def _safe_json_loads(text: str):
-    if not text:
-        return None
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        return json.loads(text[start:end + 1])
-    except Exception:
-        return None
+def get_id_col(df: pd.DataFrame) -> str:
+    for c in ["번호", "학번", "학생번호", "student_id", "ID"]:
+        if c in df.columns:
+            return c
+    return "번호"
 
 
-def generate_sh_insight_report(
-    student_id: str,
-    masked_name: str,
-    year_count: int,
-    seteuk_text: str,
-    haengteuk_text: str,
-    changche_text: str,
-):
-    seteuk_text = (seteuk_text or "").strip()
-    haengteuk_text = (haengteuk_text or "").strip()
-    changche_text = (changche_text or "").strip()
+def normalize_id_series(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.strip()
 
-    user_prompt = f"""
-[학생 정보]
-- 학번: {student_id}
-- 성명(마스킹): {masked_name}
-- 학년 수: {year_count}
 
-[세특 원문]
-{seteuk_text if seteuk_text else "(원문이 비어 있음)"}
+def extract_text(df: pd.DataFrame) -> str:
+    if df is None or df.empty:
+        return ""
+    drop_cols = {"번호", "학번", "학생번호", "성명", "이름", "학년", "반", "담임", "과목", "영역", "구분"}
+    cols = [c for c in df.columns if str(c).strip() and str(c) not in drop_cols]
+    if not cols:
+        return ""
+    parts = []
+    for c in cols:
+        s = df[c]
+        if pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
+            vals = s.dropna().astype(str).map(lambda x: x.strip()).tolist()
+            vals = [v for v in vals if v and v.lower() != "nan"]
+            if vals:
+                parts.append(f"[{c}]\n" + "\n".join(vals))
+    return "\n\n".join(parts).strip()
 
-[행특 원문]
-{haengteuk_text if haengteuk_text else "(원문이 비어 있음)"}
 
-[창체 원문]
-{changche_text if changche_text else "(원문이 비어 있음)"}
+def calc_year_count(*dfs):
+    years = set()
+    for df in dfs:
+        if df is not None and "학년" in df.columns:
+            years.update(df["학년"].dropna().astype(str).str.strip().tolist())
+    return len(years)
 
-[작성 지침 - 매우 중요]
-- 근거 문장은 반드시 원문에서 '그대로' 발췌한 짧은 문장/구절로 작성할 것(의미 없는 숫자 반복 금지).
-- 세 영역(세특/행특/창체)에서 각각 최소 1개 이상의 근거를 찾으려 시도할 것.
-- 점수(0~10)는 근거의 질/일관성/심화 수준/자기주도성 등을 고려해 산정하고, "분석"에서 산정 이유를 설명할 것.
-- "종합 평가"는 최소 6~10문장, 각 "분석"은 최소 4~6문장으로 작성할 것.
-- '핵심 강점'은 4개, '보완 추천 영역'은 2개를 원칙으로 하되 원문 근거 기반으로 작성.
-- '역량 기반 추천 학과'는 3개를 채우되, 원문에 근거가 약하면 조건부 표현을 사용.
-- 반드시 SYSTEM_PROMPT의 JSON 스키마 그대로 출력하라(키 변경 금지).
-""".strip()
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.25,
-            response_format={"type": "json_object"},
-        )
-        content = response.choices[0].message.content
-        data = _safe_json_loads(content) or json.loads(content)
+# 1) 업로드
+st.header("1️⃣ 파일 업로드")
+uploaded_files = st.file_uploader(
+    "세특·행특·창체 파일 3개 업로드 (파일명에 세특/행특/창체 포함)",
+    type=["xlsx"],
+    accept_multiple_files=True,
+)
 
-        # 최소한의 안전 보정(키 누락 방지)
-        if "학생 정보" not in data:
-            data["학생 정보"] = {"학번": str(student_id), "성명": str(masked_name), "학년 수": int(year_count)}
-        return data
+file_seteuk = file_haeng = file_chang = None
+if uploaded_files:
+    for f in uploaded_files:
+        if "세특" in f.name:
+            file_seteuk = f
+        elif "행특" in f.name:
+            file_haeng = f
+        elif "창체" in f.name:
+            file_chang = f
 
-    except Exception as e:
-        # 실패 시에도 앱이 죽지 않도록 구조 반환
-        return {
-            "학생 정보": {"학번": str(student_id), "성명": str(masked_name), "학년 수": int(year_count)},
-            "종합 평가": "모델 출력이 안정적인 JSON으로 반환되지 않아 보고서를 구조화하지 못함. 원문 길이/형식 또는 응답 형식 설정을 점검할 필요가 있음.",
-            "핵심 강점": [],
-            "보완 추천 영역": ["출력 형식(JSON) 안정화 필요"],
-            "3대 평가 항목별 상세 분석": {
-                "학업역량": {"점수": 0, "평가 근거 문장": [], "분석": ""},
-                "학업태도": {"점수": 0, "평가 근거 문장": [], "분석": ""},
-                "학업 외 소양": {"점수": 0, "평가 근거 문장": [], "분석": ""},
-            },
-            "영역별 심화 탐구 주제 제안": {"자율": "", "진로": "", "동아리": ""},
-            "역량 기반 추천 학과": [],
-            "맞춤형 성장 제안": {
-                "생활기록부 중점 보완 전략": "",
-                "추천 학교 행사": [],
-                "추천 활동 설계": []
-            },
-            "추천 도서": [],
-            "error": str(e),
-        }
+# 2) 명렬
+if st.button("📋 명렬 보기"):
+    if not file_seteuk or not file_haeng or not file_chang:
+        st.error("세특·행특·창체 파일을 모두 업로드하세요.")
+        st.stop()
+
+    with st.spinner("데이터 분석 중입니다…"):
+        df_seteuk = load_seteuk(file_seteuk)
+        df_haeng = load_haengteuk(file_haeng)
+        df_chang = load_changche(file_chang)
+
+        for df in (df_seteuk, df_haeng, df_chang):
+            id_col = get_id_col(df)
+            if id_col in df.columns:
+                df[id_col] = normalize_id_series(df[id_col])
+
+        frames = []
+        for df in (df_seteuk, df_haeng, df_chang):
+            id_col = get_id_col(df)
+            if {id_col, "성명"}.issubset(df.columns):
+                tmp = df[[id_col, "성명"]].copy()
+                tmp.columns = ["번호", "성명"]
+                frames.append(tmp)
+
+        df_students = pd.concat(frames, ignore_index=True).dropna().drop_duplicates()
+        df_students["번호"] = df_students["번호"].astype(str).str.strip()
+        df_students = df_students[df_students["번호"].str.isdigit()]
+
+        def mask_name(x):
+            x = str(x)
+            return x[0] + "ㅇ" + x[-1] if len(x) >= 3 else x
+
+        df_students["성명"] = df_students["성명"].apply(mask_name)
+
+        st.session_state["students_table"] = pd.DataFrame({
+            "선택": [False] * len(df_students),
+            "학번": df_students["번호"].tolist(),
+            "성명": df_students["성명"].tolist(),
+        })
+        st.session_state["df_seteuk"] = df_seteuk
+        st.session_state["df_haeng"] = df_haeng
+        st.session_state["df_chang"] = df_chang
+
+    st.success("명렬을 불러왔습니다.")
+
+# 3) 표 + 생성
+if "students_table" in st.session_state:
+    st.subheader("📋 학생 명렬")
+    edited_df = st.data_editor(
+        st.session_state["students_table"],
+        hide_index=True,
+        use_container_width=True,
+        disabled=["학번", "성명"],
+    )
+    st.session_state["students_table"] = edited_df
+
+    selected = edited_df[edited_df["선택"] == True]
+    st.write(f"선택된 학생 수: **{len(selected)}명**")
+
+    if st.button("🧠 선택 학생 보고서 생성"):
+        if selected.empty:
+            st.warning("보고서를 생성할 학생을 선택하세요.")
+            st.stop()
+
+        df_seteuk = st.session_state["df_seteuk"]
+        df_haeng = st.session_state["df_haeng"]
+        df_chang = st.session_state["df_chang"]
+
+        total = len(selected)
+        prog = st.progress(0, text="보고서 생성 준비 중…")
+
+        first_report = None
+        first_meta = None
+
+        for idx, row in enumerate(selected.reset_index(drop=True).itertuples(index=False), start=1):
+            sid = str(getattr(row, "학번")).strip()
+            sname = getattr(row, "성명")
+
+            set_col = get_id_col(df_seteuk)
+            hae_col = get_id_col(df_haeng)
+            cha_col = get_id_col(df_chang)
+
+            stu_seteuk = df_seteuk[normalize_id_series(df_seteuk[set_col]) == sid] if set_col in df_seteuk.columns else df_seteuk.iloc[0:0]
+            stu_haeng = df_haeng[normalize_id_series(df_haeng[hae_col]) == sid] if hae_col in df_haeng.columns else df_haeng.iloc[0:0]
+            stu_chang = df_chang[normalize_id_series(df_chang[cha_col]) == sid] if cha_col in df_chang.columns else df_chang.iloc[0:0]
+
+            year_count = calc_year_count(stu_seteuk, stu_haeng, stu_chang)
+            seteuk_text = extract_text(stu_seteuk)
+            haeng_text = extract_text(stu_haeng)
+            chang_text = extract_text(stu_chang)
+
+            report = generate_sh_insight_report(
+                student_id=sid,
+                masked_name=sname,
+                year_count=year_count,
+                seteuk_text=seteuk_text,
+                haengteuk_text=haeng_text,
+                changche_text=chang_text,
+            )
+
+            if first_report is None and isinstance(report, dict):
+                first_report = report
+                first_meta = (sid, sname)
+
+            prog.progress(int(idx / total * 100), text=f"진행률: {int(idx/total*100)}%")
+
+        prog.empty()
+        st.success("보고서 생성이 완료되었습니다.")
+
+        # 첫 학생 결과창 오픈
+        if first_report and first_meta:
+            detail = first_report.get("3대 평가 항목별 상세 분석", {}) or {}
+            scores = {}
+            if isinstance(detail, dict):
+                for key in ["학업역량", "학업태도", "학업 외 소양"]:
+                    v = detail.get(key, {})
+                    if isinstance(v, dict):
+                        scores[key] = v.get("점수", 0)
+
+            # 차트 먼저 생성(이미지 buf 반환)
+            radar_png = render_radar_chart_to_streamlit(st, scores)
+
+            # PDF 생성
+            pdf_bytes = build_pdf_bytes(first_report, radar_png, first_meta[0], first_meta[1])
+
+            # 모달 렌더
+            render_report_modal(st, first_report, first_meta[0], first_meta[1], radar_png, pdf_bytes)

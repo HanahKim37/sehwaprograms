@@ -163,17 +163,34 @@ if "students_table" in st.session_state:
     df_chang = st.session_state["df_chang"]
 
     # 텍스트 컬럼 자동 탐색
-    def pick_text_column(df):
-        for c in df.columns:
-            if df[c].dtype == "object":
-                return c
-        return None
+    def pick_text_column(df: pd.DataFrame):
+    for c in df.columns:
+        s = df[c]
 
-    def build_text(df):
-        col = pick_text_column(df)
-        if col is None or df.empty:
+        # ✅ 중복 컬럼명으로 df[c]가 DataFrame이 되는 경우 방어
+        if isinstance(s, pd.DataFrame):
+            s = s.iloc[:, 0]
+
+        if pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
+            return c
+    return None
+
+    def build_text(df: pd.DataFrame) -> str:
+        if df is None or df.empty:
             return ""
-        return "\n".join(df[col].dropna().astype(str).tolist())
+
+        col = pick_text_column(df)
+        if col is None:
+            return ""
+
+    s = df[col]
+    # ✅ 여기서도 한 번 더 방어
+    if isinstance(s, pd.DataFrame):
+        s = s.iloc[:, 0]
+
+    return "\n".join(s.dropna().astype(str).tolist())
+
+    
 
     def calc_year_count(*dfs):
         years = set()

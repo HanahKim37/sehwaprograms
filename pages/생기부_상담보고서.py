@@ -89,7 +89,7 @@ if st.button("📋 명렬 보기"):
         )
 
         # 숫자 아닌 행 제거 (헤더 제거)
-        df_students = df_students[df_students["번호"].str.isdigit()]
+        df_students = df_students[df_students["번호"].astype(str).str.isdigit()]
 
         if df_students.empty:
             st.error("학생 명렬을 생성할 수 없습니다.")
@@ -105,7 +105,7 @@ if st.button("📋 명렬 보기"):
         # 체크박스 포함 화면용 테이블
         st.session_state["students_table"] = pd.DataFrame({
             "선택": [False] * len(df_students),
-            "학번": df_students["번호"].tolist(),
+            "학번": df_students["번호"].astype(str).tolist(),
             "성명": df_students["성명"].tolist(),
         })
 
@@ -130,7 +130,7 @@ if "students_table" in st.session_state:
 
     edited_df = st.data_editor(
         st.session_state["students_table"],
-        hide_index=True,   # ← 이상한 행번호 제거
+        hide_index=True,
         use_container_width=True,
         column_config={
             "선택": st.column_config.CheckboxColumn("선택", width="small"),
@@ -162,18 +162,20 @@ if "students_table" in st.session_state:
     df_haeng = st.session_state["df_haeng"]
     df_chang = st.session_state["df_chang"]
 
-    # 텍스트 컬럼 자동 탐색
+    # -----------------------------
+    # 텍스트 컬럼 자동 탐색 (중복 컬럼명 방어)
+    # -----------------------------
     def pick_text_column(df: pd.DataFrame):
-    for c in df.columns:
-        s = df[c]
+        for c in df.columns:
+            s = df[c]
 
-        # ✅ 중복 컬럼명으로 df[c]가 DataFrame이 되는 경우 방어
-        if isinstance(s, pd.DataFrame):
-            s = s.iloc[:, 0]
+            # ✅ 중복 컬럼명으로 df[c]가 DataFrame이 되는 경우 방어
+            if isinstance(s, pd.DataFrame):
+                s = s.iloc[:, 0]
 
-        if pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
-            return c
-    return None
+            if pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
+                return c
+        return None
 
     def build_text(df: pd.DataFrame) -> str:
         if df is None or df.empty:
@@ -183,14 +185,12 @@ if "students_table" in st.session_state:
         if col is None:
             return ""
 
-    s = df[col]
-    # ✅ 여기서도 한 번 더 방어
-    if isinstance(s, pd.DataFrame):
-        s = s.iloc[:, 0]
+        s = df[col]
+        # ✅ 여기서도 한 번 더 방어
+        if isinstance(s, pd.DataFrame):
+            s = s.iloc[:, 0]
 
-    return "\n".join(s.dropna().astype(str).tolist())
-
-    
+        return "\n".join(s.dropna().astype(str).tolist())
 
     def calc_year_count(*dfs):
         years = set()
@@ -208,12 +208,13 @@ if "students_table" in st.session_state:
         results = []
 
         for _, row in selected.iterrows():
-            sid = row["학번"]
+            sid = str(row["학번"]).strip()
             sname = row["성명"]
 
-            stu_seteuk = df_seteuk[df_seteuk["번호"] == sid]
-            stu_haeng = df_haeng[df_haeng["번호"] == sid]
-            stu_chang = df_chang[df_chang["번호"] == sid]
+            # 번호 컬럼이 문자열로 통일되어 있다고 가정
+            stu_seteuk = df_seteuk[df_seteuk["번호"].astype(str).str.strip() == sid]
+            stu_haeng = df_haeng[df_haeng["번호"].astype(str).str.strip() == sid]
+            stu_chang = df_chang[df_chang["번호"].astype(str).str.strip() == sid]
 
             year_count = calc_year_count(stu_seteuk, stu_haeng, stu_chang)
 
@@ -250,7 +251,6 @@ if "reports" in st.session_state:
         if isinstance(content, str):
             st.error(content)
         else:
-            # 다음 단계에서 카드 UI로 교체 가능
             st.json(content)
 
         st.divider()

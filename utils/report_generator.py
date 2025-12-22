@@ -1,56 +1,56 @@
-import openai
-from fpdf import FPDF
+# utils/report_generator.py
+from io import BytesIO
+from datetime import datetime
 
-def generate_report_text(name, number, df_seteuk, df_haeng, df_chang):
-    """ChatGPT API를 이용하여 상담 보고서를 텍스트로 생성"""
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
 
-    prompt = f"""
-    아래 학생의 생기부 데이터를 분석하여 전문적인 상담 보고서를 작성하시오.
-
-    학생 이름(마스킹): {name}
-    학번: {number}
-
-    [세특]
-    {df_seteuk.to_string()}
-
-    [행동특성 및 종합의견]
-    {df_haeng.to_string()}
-
-    [창체 활동]
-    {df_chang.to_string()}
-
-    반드시 아래 구조로 보고서를 작성하시오.
-
-    1. 제목 + 학생 기본 정보(이름 마스킹 유지)
-    2. 종합 평가 (희망 진로 포함)
-    3. 핵심 역량 분석
-       - 삼각형 그래프 설명
-       - 핵심 강점 3개
-       - 보완 추천 영역 3개
-    4. 3대 평가 항목별 상세 분석
-       - 학업 역량 (평가 근거 문항 포함)
-       - 학업 태도 (평가 근거 문항 포함)
-       - 학업 외 소양 (평가 근거 문항 포함)
-    5. 맞춤형 성장 제안 (생활기록부 기반)
-
-    전문적이며 교사의 상담 문체로 작성할 것.
+def build_pdf_from_report(report: dict, radar_png: BytesIO, sid: str, sname: str) -> bytes:
+    """
+    ai_report_generator에서 생성된 JSON(report)을
+    PDF로 변환하는 전용 모듈
     """
 
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=16*mm,
+        rightMargin=16*mm,
+        topMargin=16*mm,
+        bottomMargin=16*mm,
     )
 
-    return response.choices[0].message.content
+    styles = getSampleStyleSheet()
+    story = []
 
+    # 제목
+    story.append(Paragraph("SH-Insight 심층 분석 보고서", styles["Title"]))
+    story.append(Paragraph(f"{sid} / {sname}", styles["Normal"]))
+    story.append(Paragraph(datetime.now().strftime("%Y-%m-%d %H:%M"), styles["Normal"]))
+    story.append(Spacer(1, 12))
 
-def generate_report_pdf(text):
-    """텍스트 기반 PDF 생성"""
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    # 종합 평가
+    story.append(Paragraph("종합 평가", styles["Heading2"]))
+    story.append(Paragraph(report.get("종합 평가", ""), styles["BodyText"]))
+    story.append(Spacer(1, 10))
 
-    for line in text.split("\n"):
-        pdf.multi_cell(0, 7, line)
+    # 레이더
+    if radar_png is not None:
+        story.append(Paragraph("핵심 역량 분포", styles["Heading2"]))
+        story.append(RLImage(radar_png, width=110*mm, height=100*mm))
+        story.append(Spacer(1, 12))
 
-    return pdf.output(dest="S").encode("latin1")
+    # 3대 평가
+    detail = report.get("3대 평가 항목별 상세 분석", {})
+    for area, data in detail.items():
+        story.append(Paragraph(f"{area} ({data.get('점수',0)}/10)", styles["Heading3"]))
+        story.append(Paragraph(data.get("분석",""), styles["BodyText"]))
+        for ev in data.get("평가 근거 문장", [])[:5]:
+            story.append(Paragraph(f"- {ev}", styles["BodyText"]))
+        story.append(Spacer(1, 8))
+
+    doc.build(story)
+    return buf.getvalue()

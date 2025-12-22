@@ -49,7 +49,8 @@ def generate_sh_insight_report(
 SH-Insight 심층 분석 보고서를 작성하라.
 """
 
-    response = openai.ChatCompletion.create(
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},

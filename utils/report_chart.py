@@ -1,68 +1,124 @@
-import os
+# utils/report_chart.py
+from __future__ import annotations
+
 from io import BytesIO
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 
 
-def _candidate_font_paths():
-    here = os.path.dirname(os.path.abspath(__file__))
-    proj_root = os.path.abspath(os.path.join(here, ".."))
-    return [
-        os.path.join(proj_root, "assets", "NanumGothic.ttf"),
-        os.path.join(proj_root, "assets", "NotoSansKR-Regular.ttf"),
+# -----------------------------
+# 한글 폰트 자동 탐색 (matplotlib)
+# -----------------------------
+def _try_set_korean_font() -> Optional[str]:
+    """
+    가능한 한 '한글이 깨지지 않도록' matplotlib 폰트를 자동 설정한다.
+    - Windows: Malgun Gothic
+    - macOS: AppleGothic
+    - Linux: NanumGothic / NotoSansCJK / etc.
+    성공 시 font family name 반환, 실패 시 None
+    """
+    candidates = []
+
+    # 1) OS별 대표 폰트 패밀리 이름 우선 시도
+    for fam in ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans CJK KR", "Noto Sans KR"]:
+        candidates.append(("family", fam))
+
+    # 2) 파일 경로 탐색 (자주 쓰는 경로)
+    font_paths = [
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
         "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.otf",
+        "/System/Library/Fonts/AppleGothic.ttf",
+        "C:/Windows/Fonts/malgun.ttf",
+        "C:/Windows/Fonts/malgunbd.ttf",
     ]
 
+    # 프로젝트 내 fonts 폴더도 탐색(권장)
+    here = Path(__file__).resolve().parent
+    local_fonts = list((here / "fonts").glob("*.ttf")) + list((here / "fonts").glob("*.otf")) + list((here / "fonts").glob("*.ttc"))
+    for p in local_fonts:
+        font_paths.append(str(p))
 
-def setup_matplotlib_korean_font() -> bool:
-    for fp in _candidate_font_paths():
-        if fp and os.path.exists(fp):
-            try:
-                fm.fontManager.addfont(fp)
-                font_name = fm.FontProperties(fname=fp).get_name()
-                plt.rcParams["font.family"] = font_name
+    for fp in font_paths:
+        if Path(fp).exists():
+            candidates.append(("file", fp))
+
+    # 적용 시도
+    for kind, val in candidates:
+        try:
+            if kind == "family":
+                plt.rcParams["font.family"] = val
+                # 테스트: 폰트 매칭이 가능한지 확인
+                _ = fm.findfont(val, fallback_to_default=False)
                 plt.rcParams["axes.unicode_minus"] = False
-                return True
-            except Exception:
-                continue
-    return False
+                return val
+            else:
+                fm.fontManager.addfont(val)
+                prop = fm.FontProperties(fname=val)
+                fam = prop.get_name()
+                plt.rcParams["font.family"] = fam
+                plt.rcParams["axes.unicode_minus"] = False
+                return fam
+        except Exception:
+            continue
+
+    return None
 
 
-def render_radar_chart_to_streamlit(st, scores: dict) -> BytesIO:
+# -----------------------------
+# 레이더 차트 생성 (작게/가운데)
+# -----------------------------
+def build_radar_png(
+    scores: Dict[str, float],
+    size_inches: Tuple[float, float] = (3.0, 2.7),
+    dpi: int = 220,
+) -> BytesIO:
     """
-    Streamlit에 레이더 차트를 '작게' 출력하고, PDF용 PNG BytesIO도 반환.
-    labels는 사진 요구사항대로 한글로 고정.
-    """
-    labels = ["학업역량", "학업 외 소양", "학업태도"]
-    values = [float(scores.get(k, 0) or 0) for k in labels]
+    scores 예:
+      {"학업역량": 9, "학업태도": 10, "학업 외 소양": 8}
 
-    # closed polygon
-    values += values[:1]
-    N = len(labels)
-    angles = [n / float(N) * 2 * 3.1415926535 for n in range(N)]
+    반환: PNG BytesIO (UI/PDF 공용)
+    """
+    _try_set_korean_font()
+
+    labels = ["학업역량", "학업 외 소양", "학업태도"]  # 사진과 동일 순서/표기
+    vals = [float(scores.get(k, 0) or 0) for k in labels]
+
+    # 닫힌 다각형
+    vals += vals[:1]
+    n = len(labels)
+    angles = [i / float(n) * 2 * 3.1415926535 for i in range(n)]
     angles += angles[:1]
 
-    fig = plt.figure(figsize=(3.3, 3.0), dpi=160)
+    fig = plt.figure(figsize=size_inches)
     ax = fig.add_subplot(111, polar=True)
+
+    # 위쪽 시작 + 시계방향
     ax.set_theta_offset(3.1415926535 / 2)
     ax.set_theta_direction(-1)
 
+    # 라벨
     ax.set_thetagrids([a * 180 / 3.1415926535 for a in angles[:-1]], labels, fontsize=9)
+
+    # 축 범위
     ax.set_ylim(0, 10)
     ax.set_yticks([2, 4, 6, 8, 10])
     ax.set_yticklabels(["2", "4", "6", "8", "10"], fontsize=7)
 
-    ax.plot(angles, values, linewidth=2)
-    ax.fill(angles, values, alpha=0.15)
+    # 선/채움
+    ax.plot(angles, vals, linewidth=2)
+    ax.fill(angles, vals, alpha=0.15)
 
-    st.pyplot(fig, clear_figure=True)
+    # 여백 최소화
+    fig.tight_layout(pad=0.6)
 
-    img_buf = BytesIO()
-    fig.savefig(img_buf, format="png", dpi=220, bbox_inches="tight")
-    img_buf.seek(0)
+    out = BytesIO()
+    fig.savefig(out, format="png", dpi=dpi, bbox_inches="tight", transparent=True)
+    out.seek(0)
     plt.close(fig)
-    return img_buf
+    return out

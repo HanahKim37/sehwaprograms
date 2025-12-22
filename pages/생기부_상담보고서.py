@@ -8,75 +8,131 @@ from utils.parser_changche import load_changche
 from utils.ai_report_generator import generate_sh_insight_report
 
 from io import BytesIO
+from datetime import datetime
+
 import matplotlib.pyplot as plt
 from matplotlib import font_manager, rc
 import numpy as np
 
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# ===============================
+# 기본 설정
+# ===============================
 st.set_page_config(page_title="SH-Insight 상담보고서", layout="wide")
 render_sidebar()
 
-# =========================================================
-# ✅ UI 전용 CSS (기존 기능 영향 없음)
-# =========================================================
+# ===============================
+# 스타일 (결과창 UI만 개선)
+# ===============================
 st.markdown("""
 <style>
-.report-card{
+div[data-testid="stDataEditor"]{
+    margin-left:auto;
+    margin-right:auto;
+    max-width:900px;
+}
+.card{
     background:#ffffff;
     border:1px solid #e5e7eb;
-    border-radius:14px;
-    padding:20px 22px;
-    margin-bottom:18px;
+    border-radius:16px;
+    padding:20px;
+    margin:14px 0;
 }
-.report-title{
+.card-title{
     font-size:18px;
     font-weight:700;
     margin-bottom:10px;
     color:#111827;
 }
-.report-text{
+.card-text{
     font-size:14px;
     line-height:1.7;
     color:#374151;
 }
-.good-box{
+.pill-good{
     background:#f0fdf4;
     border:1px solid #bbf7d0;
-    border-radius:10px;
+    border-radius:12px;
     padding:12px;
 }
-.bad-box{
+.pill-bad{
     background:#fef2f2;
     border:1px solid #fecaca;
-    border-radius:10px;
+    border-radius:12px;
     padding:12px;
+}
+.stars{
+    font-size:18px;
+    color:#f59e0b;
+    margin-bottom:6px;
 }
 .evidence{
     background:#f9fafb;
     border-left:4px solid #9ca3af;
-    padding:10px 14px;
-    margin:8px 0;
+    border-radius:8px;
+    padding:10px 12px;
+    margin:6px 0;
     font-size:13px;
-}
-.stars{
-    color:#f59e0b;
-    font-size:18px;
+    color:#374151;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# ✅ UI 전용 함수 (기존 로직 무관)
-# =========================================================
+st.title("📘 생기부 기반 상담 보고서 (SH-Insight)")
+st.markdown("세특·행특·창체 파일을 업로드하고 학생을 선택해 상담 보고서를 생성합니다.")
 
-def render_stars(score_10: int):
-    stars = round(score_10 / 2)
-    return "⭐" * stars + "☆" * (5 - stars)
+# ===============================
+# 유틸 함수 (기존 로직 유지)
+# ===============================
+def get_id_col(df: pd.DataFrame) -> str:
+    for c in ["번호", "학번", "학생번호", "student_id", "ID"]:
+        if c in df.columns:
+            return c
+    return "번호"
 
+def normalize_id_series(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.strip()
+
+def extract_text(df: pd.DataFrame) -> str:
+    if df is None or df.empty:
+        return ""
+    drop_cols = {"번호", "학번", "학생번호", "성명", "이름", "학년", "반", "담임", "과목"}
+    cols = [c for c in df.columns if c not in drop_cols]
+    texts = []
+    for c in cols:
+        if pd.api.types.is_object_dtype(df[c]):
+            texts += df[c].dropna().astype(str).tolist()
+    return "\n".join(texts)
+
+def calc_year_count(*dfs):
+    years = set()
+    for df in dfs:
+        if "학년" in df.columns:
+            years.update(df["학년"].dropna().astype(str).tolist())
+    return len(years)
+
+# ===============================
+# 별점 / 레이더
+# ===============================
+def render_stars(score):
+    try:
+        score = int(score)
+    except:
+        score = 0
+    return "⭐" * round(score/2) + "☆" * (5 - round(score/2))
 
 def render_radar_chart(scores: dict):
-    font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-    font_manager.fontManager.addfont(font_path)
-    rc("font", family="NanumGothic")
+    try:
+        font_manager.fontManager.addfont("/usr/share/fonts/truetype/nanum/NanumGothic.ttf")
+        rc("font", family="NanumGothic")
+    except:
+        pass
 
     labels = ["학업역량", "학업태도", "학업 외 소양"]
     values = [scores.get(k, 0) for k in labels]
@@ -85,10 +141,9 @@ def render_radar_chart(scores: dict):
     angles = np.linspace(0, 2*np.pi, len(labels), endpoint=False).tolist()
     angles += angles[:1]
 
-    fig = plt.figure(figsize=(3.4, 3.4))
+    fig = plt.figure(figsize=(3.2, 3.2))
     ax = fig.add_subplot(111, polar=True)
-
-    ax.set_theta_offset(np.pi / 2)
+    ax.set_theta_offset(np.pi/2)
     ax.set_theta_direction(-1)
     ax.set_thetagrids(np.degrees(angles[:-1]), labels)
     ax.set_ylim(0, 10)
@@ -104,65 +159,116 @@ def render_radar_chart(scores: dict):
     plt.close(fig)
     return buf
 
+# ===============================
+# PDF
+# ===============================
+def build_pdf_bytes(report: dict, radar_png: BytesIO, sid: str, sname: str) -> bytes:
+    buf = BytesIO()
+    pdfmetrics.registerFont(TTFont("Nanum", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"))
+    styles = getSampleStyleSheet()
+    for s in styles.byName.values():
+        s.fontName = "Nanum"
 
-# =========================================================
-# ⬇️⬇️⬇️
-# ⬇️ 기존 코드 전체 그대로 ⬇️
-# ⬇️ (파일 업로드 / 명렬 / AI 호출 등) ⬇️
-# =========================================================
-# ⚠️ 여기 아래는 당신의 기존 코드 그대로 두세요
-# ⚠️ 단, 아래 “render_report_modal” 함수만 교체
-# =========================================================
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        leftMargin=16*mm, rightMargin=16*mm,
+        topMargin=16*mm, bottomMargin=16*mm)
 
-def render_report_modal(report: dict, sid: str, sname: str):
-    @st.dialog(f"📊 SH-Insight 심층 분석 보고서 · {sid} / {sname}", width="large")
-    def _show():
+    story = []
+    story.append(Paragraph("SH-Insight 심층 분석 보고서", styles["Title"]))
+    story.append(Paragraph(f"{sid} / {sname}", styles["Normal"]))
+    story.append(Spacer(1, 10))
 
-        overall = report.get("종합 평가","")
-        strengths = report.get("핵심 강점",[])
-        needs = report.get("보완 추천 영역",[])
-        detail = report.get("3대 평가 항목별 상세 분석",{})
+    story.append(Paragraph("종합 평가", styles["Heading2"]))
+    story.append(Paragraph(report.get("종합 평가",""), styles["BodyText"]))
+    story.append(Spacer(1, 10))
 
-        st.markdown(f"""
-        <div class="report-card">
-            <div class="report-title">종합 평가</div>
-            <div class="report-text">{overall}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    if radar_png:
+        story.append(Paragraph("핵심 역량", styles["Heading2"]))
+        story.append(RLImage(radar_png, width=110*mm, height=100*mm))
+        story.append(Spacer(1, 10))
 
-        # 레이더 차트
-        scores = {k:v.get("점수",0) for k,v in detail.items() if isinstance(v,dict)}
-        st.markdown('<div class="report-card"><div class="report-title">핵심 역량</div>', unsafe_allow_html=True)
-        radar_png = render_radar_chart(scores)
-        st.markdown('</div>', unsafe_allow_html=True)
+    for k, v in report.get("3대 평가 항목별 상세 분석", {}).items():
+        story.append(Paragraph(f"{k} ({v.get('점수',0)}/10)", styles["Heading3"]))
+        story.append(Paragraph(v.get("분석",""), styles["BodyText"]))
+        for e in v.get("평가 근거 문장", [])[:5]:
+            story.append(Paragraph(f"- {e}", styles["BodyText"]))
+        story.append(Spacer(1, 8))
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown('<div class="report-card"><div class="report-title">핵심 강점</div><div class="good-box">', unsafe_allow_html=True)
-            for s in strengths:
-                st.markdown(f"- {s}")
-            st.markdown('</div></div>', unsafe_allow_html=True)
+    doc.build(story)
+    return buf.getvalue()
 
-        with col2:
-            st.markdown('<div class="report-card"><div class="report-title">보완 추천 영역</div><div class="bad-box">', unsafe_allow_html=True)
-            for s in needs:
-                st.markdown(f"- {s}")
-            st.markdown('</div></div>', unsafe_allow_html=True)
+# ===============================
+# 파일 업로드 / 명렬 / 생성
+# ===============================
+st.header("1️⃣ 파일 업로드")
+uploaded_files = st.file_uploader(
+    "세특·행특·창체 파일 3개 업로드",
+    type=["xlsx"],
+    accept_multiple_files=True,
+)
 
-        for k, v in detail.items():
-            if not isinstance(v, dict):
-                continue
+file_seteuk = file_haeng = file_chang = None
+if uploaded_files:
+    for f in uploaded_files:
+        if "세특" in f.name: file_seteuk = f
+        elif "행특" in f.name: file_haeng = f
+        elif "창체" in f.name: file_chang = f
 
-            st.markdown(f"""
-            <div class="report-card">
-                <div class="report-title">{k}</div>
-                <div class="stars">{render_stars(v.get("점수",0))}</div>
-                <div class="report-text">{v.get("분석","")}</div>
-            """, unsafe_allow_html=True)
+if st.button("📋 명렬 보기"):
+    df_seteuk = load_seteuk(file_seteuk)
+    df_haeng = load_haengteuk(file_haeng)
+    df_chang = load_changche(file_chang)
 
-            for e in v.get("평가 근거 문장",[])[:5]:
-                st.markdown(f'<div class="evidence">{e}</div>', unsafe_allow_html=True)
+    for df in (df_seteuk, df_haeng, df_chang):
+        df[get_id_col(df)] = normalize_id_series(df[get_id_col(df)])
 
-            st.markdown('</div>', unsafe_allow_html=True)
+    frames = []
+    for df in (df_seteuk, df_haeng, df_chang):
+        frames.append(df[[get_id_col(df), "성명"]])
 
-    _show()
+    df_students = pd.concat(frames).drop_duplicates()
+    df_students = df_students[df_students[get_id_col(df_students)].str.isdigit()]
+
+    df_students["성명"] = df_students["성명"].apply(lambda x: x[0]+"ㅇ"+x[-1])
+    st.session_state["students_table"] = pd.DataFrame({
+        "선택": False,
+        "학번": df_students[get_id_col(df_students)],
+        "성명": df_students["성명"]
+    })
+
+    st.session_state["df_seteuk"] = df_seteuk
+    st.session_state["df_haeng"] = df_haeng
+    st.session_state["df_chang"] = df_chang
+
+if "students_table" in st.session_state:
+    edited = st.data_editor(st.session_state["students_table"], hide_index=True)
+    st.session_state["students_table"] = edited
+
+    if st.button("🧠 선택 학생 보고서 생성"):
+        for _, r in edited[edited["선택"]].iterrows():
+            sid = r["학번"]
+            sname = r["성명"]
+
+            report = generate_sh_insight_report(
+                student_id=sid,
+                masked_name=sname,
+                year_count=3,
+                seteuk_text=extract_text(st.session_state["df_seteuk"]),
+                haengteuk_text=extract_text(st.session_state["df_haeng"]),
+                changche_text=extract_text(st.session_state["df_chang"]),
+            )
+
+            @st.dialog(f"📊 SH-Insight 심층 분석 보고서 · {sid} / {sname}", width="large")
+            def show():
+                st.markdown(f"<div class='card'><div class='card-title'>종합 평가</div><div class='card-text'>{report.get('종합 평가','')}</div></div>", unsafe_allow_html=True)
+
+                scores = {k:v.get("점수",0) for k,v in report.get("3대 평가 항목별 상세 분석",{}).items()}
+                radar_png = render_radar_chart(scores)
+
+                for k, v in report.get("3대 평가 항목별 상세 분석",{}).items():
+                    st.markdown(f"<div class='card'><div class='card-title'>{k}</div><div class='stars'>{render_stars(v.get('점수',0))}</div><div class='card-text'>{v.get('분석','')}</div></div>", unsafe_allow_html=True)
+
+                pdf = build_pdf_bytes(report, radar_png, sid, sname)
+                st.download_button("📄 PDF로 저장", pdf, file_name=f"{sid}.pdf")
+
+            show()

@@ -13,7 +13,7 @@ from utils.report_ui import inject_report_css, render_report_modal
 
 st.set_page_config(page_title="SH-Insight 상담보고서", layout="wide")
 render_sidebar()
-inject_report_css(st)
+inject_report_css()
 setup_matplotlib_korean_font()
 
 st.title("📘 생기부 기반 상담 보고서 (SH-Insight)")

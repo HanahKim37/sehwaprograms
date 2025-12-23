@@ -44,7 +44,6 @@ def _register_korean_font() -> str:
     fonts_dir = here / "fonts"
     if fonts_dir.exists():
         for p in list(fonts_dir.glob("*.ttf")) + list(fonts_dir.glob("*.otf")) + list(fonts_dir.glob("*.ttc")):
-            # 파일명 기반으로 폰트명 지정
             name = p.stem.replace(" ", "")
             candidates.append((name, str(p)))
 
@@ -79,7 +78,7 @@ def _bar_section_title(text: str, styles: Dict[str, ParagraphStyle]) -> Table:
     """
     bar = Table(
         [[Paragraph("", styles["Normal"]), Paragraph(f"<b>{text}</b>", styles["H2Custom"])]],
-        colWidths=[4*mm, 170*mm]
+        colWidths=[4 * mm, 170 * mm]
     )
     bar.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#9CA3AF")),
@@ -97,7 +96,7 @@ def _card_paragraph(text: str, styles: Dict[str, ParagraphStyle]) -> Table:
     박스(카드) 형태로 문단을 감싼다.
     """
     p = Paragraph(text.replace("\n", "<br/>"), styles["BodyCustom"])
-    t = Table([[p]], colWidths=[174*mm])
+    t = Table([[p]], colWidths=[174 * mm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#E5E7EB")),
@@ -110,7 +109,8 @@ def _card_paragraph(text: str, styles: Dict[str, ParagraphStyle]) -> Table:
     return t
 
 
-def _pill_list_box(title: str, items: List[str], bg: colors.Color, border: colors.Color, styles: Dict[str, ParagraphStyle]) -> Table:
+def _pill_list_box(title: str, items: List[str], bg: colors.Color, border: colors.Color,
+                   styles: Dict[str, ParagraphStyle]) -> Table:
     """
     사진처럼 '색 박스 안에 문구'가 들어가는 형태.
     """
@@ -121,7 +121,7 @@ def _pill_list_box(title: str, items: List[str], bg: colors.Color, border: color
     else:
         rows.append([Paragraph("-", styles["BodyCustom"])])
 
-    t = Table(rows, colWidths=[85*mm])
+    t = Table(rows, colWidths=[85 * mm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), bg),
         ("BOX", (0, 0), (-1, -1), 0.8, border),
@@ -156,14 +156,21 @@ def build_pdf_bytes(
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        rightMargin=18*mm,
-        leftMargin=18*mm,
-        topMargin=16*mm,
-        bottomMargin=16*mm
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm
     )
 
     base = getSampleStyleSheet()
     styles: Dict[str, ParagraphStyle] = {}
+
+    # ✅ (필수 수정) _bar_section_title에서 styles["Normal"]을 사용하므로 반드시 제공
+    styles["Normal"] = ParagraphStyle(
+        "Normal",
+        parent=base["Normal"],
+        fontName=font_name,
+    )
 
     styles["TitleCenter"] = ParagraphStyle(
         "TitleCenter",
@@ -214,7 +221,7 @@ def build_pdf_bytes(
 
     # 2) 학생 정보 오른쪽 정렬 + 줄
     story.append(Paragraph(f"{sid} / {sname}", styles["RightSmall"]))
-    hr = Table([[""]], colWidths=[174*mm], rowHeights=[0.6*mm])
+    hr = Table([[""]], colWidths=[174 * mm], rowHeights=[0.6 * mm])
     hr.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#111827"))]))
     story.append(Spacer(1, 4))
     story.append(hr)
@@ -240,7 +247,7 @@ def build_pdf_bytes(
     story.append(_bar_section_title("핵심 역량 분석", styles))
     story.append(Spacer(1, 8))
     if radar_png is not None:
-        img = RLImage(radar_png, width=85*mm, height=75*mm)  # 가운데 조그맣게
+        img = RLImage(radar_png, width=85 * mm, height=75 * mm)  # 가운데 조그맣게
         img.hAlign = "CENTER"
         story.append(img)
         story.append(Spacer(1, 12))
@@ -267,7 +274,7 @@ def build_pdf_bytes(
         styles=styles
     )
 
-    two = Table([[left_box, right_box]], colWidths=[87*mm, 87*mm])
+    two = Table([[left_box, right_box]], colWidths=[87 * mm, 87 * mm])
     two.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -290,13 +297,12 @@ def build_pdf_bytes(
             score = int(v.get("점수", 0) or 0)
             star_line = _stars(score, 10)
 
-            # 헤더(왼쪽 항목명, 오른쪽 별/점수)
             head = Table(
                 [[
                     Paragraph(f"<b>{key}</b>", styles["CardTitle"]),
                     Paragraph(f"{star_line} ({score}/10)", styles["RightSmall"])
                 ]],
-                colWidths=[120*mm, 54*mm]
+                colWidths=[120 * mm, 54 * mm]
             )
             head.setStyle(TableStyle([
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -306,13 +312,12 @@ def build_pdf_bytes(
             ]))
             story.append(head)
 
-            # 근거 문장 박스(작은 박스)
             evid = _safe_list(v.get("평가 근거 문장", []))
             evid_rows = [[Paragraph("<b>평가 근거 문장</b>", styles["BodyCustom"])]]
             for e in evid[:6]:
                 evid_rows.append([Paragraph(f"• {e}", styles["BodyCustom"])])
 
-            evid_table = Table(evid_rows, colWidths=[174*mm])
+            evid_table = Table(evid_rows, colWidths=[174 * mm])
             evid_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F9FAFB")),
                 ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#E5E7EB")),
@@ -325,7 +330,6 @@ def build_pdf_bytes(
             story.append(evid_table)
             story.append(Spacer(1, 8))
 
-            # 분석 박스
             story.append(_card_paragraph(str(v.get("분석", "") or ""), styles))
             story.append(Spacer(1, 16))
     else:
@@ -342,7 +346,8 @@ def build_pdf_bytes(
     left_items = []
     if isinstance(growth, dict):
         left_items.append(Paragraph("<b>생활기록부 중점 보완 전략</b>", styles["CardTitle"]))
-        left_items.append(Paragraph(str(growth.get("생활기록부 중점 보완 전략", "") or "-").replace("\n", "<br/>"), styles["BodyCustom"]))
+        left_items.append(Paragraph(str(growth.get("생활기록부 중점 보완 전략", "") or "-").replace("\n", "<br/>"),
+                                    styles["BodyCustom"]))
         left_items.append(Spacer(1, 6))
         left_items.append(Paragraph("<b>추천 학교 행사</b>", styles["CardTitle"]))
         행사 = growth.get("추천 학교 행사", [])
@@ -352,7 +357,7 @@ def build_pdf_bytes(
         else:
             left_items.append(Paragraph("-", styles["BodyCustom"]))
 
-    left_card = Table([[left_items]], colWidths=[85*mm])
+    left_card = Table([[left_items]], colWidths=[85 * mm])
     left_card.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#E5E7EB")),
@@ -377,7 +382,7 @@ def build_pdf_bytes(
     else:
         right_rows.append([Paragraph("-", styles["BodyCustom"])])
 
-    right_card = Table(right_rows, colWidths=[85*mm])
+    right_card = Table(right_rows, colWidths=[85 * mm])
     right_card.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F9FAFB")),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#E5E7EB")),
@@ -388,7 +393,7 @@ def build_pdf_bytes(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
     ]))
 
-    two2 = Table([[left_card, right_card]], colWidths=[87*mm, 87*mm])
+    two2 = Table([[left_card, right_card]], colWidths=[87 * mm, 87 * mm])
     two2.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -397,7 +402,7 @@ def build_pdf_bytes(
     story.append(two2)
     story.append(Spacer(1, 18))
 
-    # 7) 영역별 심화 탐구 주제 제안 (하늘색 배경 박스)
+    # 7) 영역별 심화 탐구 주제 제안
     story.append(_bar_section_title("영역별 심화 탐구 주제 제안", styles))
     story.append(Spacer(1, 10))
 
@@ -409,7 +414,7 @@ def build_pdf_bytes(
             v = str(topics.get(k, "") or "")
         topic_rows.append([Paragraph(f"<b>[{k}]</b> {v}", styles["BodyCustom"])])
 
-    topic_card = Table(topic_rows, colWidths=[174*mm])
+    topic_card = Table(topic_rows, colWidths=[174 * mm])
     topic_card.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#BFDBFE")),
@@ -440,7 +445,7 @@ def build_pdf_bytes(
             cell = Table(
                 [[Paragraph(f"<b>{dept}</b>", styles["CardTitle"])],
                  [Paragraph(reason.replace("\n", "<br/>"), styles["BodyCustom"])]],
-                colWidths=[55*mm]
+                colWidths=[55 * mm]
             )
             cell.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, -1), colors.white),
@@ -454,9 +459,9 @@ def build_pdf_bytes(
             cards.append(cell)
 
     while len(cards) < 3:
-        cards.append(Table([[Paragraph("-", styles["BodyCustom"])]], colWidths=[55*mm]))
+        cards.append(Table([[Paragraph("-", styles["BodyCustom"])]], colWidths=[55 * mm]))
 
-    majors_row = Table([[cards[0], cards[1], cards[2]]], colWidths=[58*mm, 58*mm, 58*mm])
+    majors_row = Table([[cards[0], cards[1], cards[2]]], colWidths=[58 * mm, 58 * mm, 58 * mm])
     majors_row.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -464,7 +469,6 @@ def build_pdf_bytes(
     ]))
     story.append(majors_row)
 
-    # 빌드
     doc.build(story)
     pdf = buf.getvalue()
     buf.close()

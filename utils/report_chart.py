@@ -1,103 +1,87 @@
-# utils/report_chart.py
-from __future__ import annotations
-
-from io import BytesIO
-from pathlib import Path
-from typing import Dict, Optional
-
-import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import font_manager as fm
-
+import numpy as np
+from io import BytesIO
+import matplotlib.font_manager as fm
+import os
 
 def setup_matplotlib_korean_font():
     """
-    프로젝트 내부 폰트(utils/fonts/*.ttf|*.otf)를 우선 사용하여
-    matplotlib 한글 깨짐을 방지합니다.
+    한글 폰트 설정 (Streamlit Cloud 등 리눅스 환경 고려)
     """
-    try:
-        matplotlib.rcParams["axes.unicode_minus"] = False
-        here = Path(__file__).resolve().parent
-        fonts_dir = here / "fonts"
+    system_fonts = [f.name for f in fm.fontManager.ttflist]
+    
+    # 1. 나눔고딕/나눔바른고딕 (리눅스/서버 환경)
+    if 'NanumGothic' in system_fonts:
+        plt.rc('font', family='NanumGothic')
+    elif 'NanumBarunGothic' in system_fonts:
+        plt.rc('font', family='NanumBarunGothic')
+    # 2. 맑은 고딕 (윈도우)
+    elif 'Malgun Gothic' in system_fonts:
+        plt.rc('font', family='Malgun Gothic')
+    # 3. 애플고딕 (맥)
+    elif 'AppleGothic' in system_fonts:
+        plt.rc('font', family='AppleGothic')
+    else:
+        # 폰트가 없을 경우 기본값 (한글 깨질 수 있음)
+        plt.rc('font', family='sans-serif')
 
-        # 우선순위: NanumGothic 계열 → NotoSansKR 계열 → 기타 ttf/otf
-        candidates = []
-        if fonts_dir.exists():
-            for name in [
-                "NanumGothic-Regular.ttf",
-                "NanumGothic.ttf",
-                "NanumGothicBold.ttf",
-                "NotoSansKR-Regular.otf",
-                "NotoSansCJK-Regular.ttc",
-            ]:
-                p = fonts_dir / name
-                if p.exists():
-                    candidates.append(p)
+    plt.rcParams['axes.unicode_minus'] = False
 
-            # 혹시 다른 폰트 파일이 들어있으면 그것도 후보에 추가
-            for p in list(fonts_dir.glob("*.ttf")) + list(fonts_dir.glob("*.otf")):
-                if p not in candidates:
-                    candidates.append(p)
-
-        for p in candidates:
-            try:
-                fm.fontManager.addfont(str(p))
-                prop = fm.FontProperties(fname=str(p))
-                matplotlib.rcParams["font.family"] = prop.get_name()
-                return
-            except Exception:
-                continue
-    except Exception:
-        # 폰트 셋업 실패해도 앱이 죽지 않게
-        return
-
-
-def build_radar_png(scores: Dict[str, float], size_px: int = 300) -> Optional[BytesIO]:
+def build_radar_png(scores: dict):
     """
-    scores 예:
-      {"학업역량": 7, "학업태도": 8, "학업 외 소양": 6}
-    반환: PNG BytesIO
+    점수 딕셔너리({'학업역량': 8, ...})를 받아 
+    삼각형(또는 다각형) 레이더 차트 이미지를 BytesIO로 반환
     """
-    labels = ["학업역량", "학업 외 소양", "학업태도"]  # 요청 순서 반영(사진 느낌)
-    vals = [float(scores.get(k, 0) or 0) for k in labels]
+    if not scores:
+        return None
 
-    # 레이더 폐곡선
-    vals_closed = vals + vals[:1]
-    n = len(labels)
-    angles = [i / float(n) * 2.0 * 3.1415926535 for i in range(n)]
-    angles_closed = angles + angles[:1]
+    # 데이터 준비
+    categories = list(scores.keys())
+    # 점수 정규화 (100점 만점으로 오면 10으로 나눔)
+    values = []
+    for v in scores.values():
+        try:
+            val = float(v)
+            if val > 10: val = val / 10  # 100점 만점 대응
+            values.append(val)
+        except:
+            values.append(0)
+            
+    N = len(categories)
 
-    # 작게 보이도록 (size_px 기준으로 적절히)
-    fig = plt.figure(figsize=(size_px / 100, size_px / 100), dpi=200)
-    ax = fig.add_subplot(111, polar=True)
+    # 각 축의 각도 계산 (마지막 점을 첫 점과 연결하기 위해 2pi까지)
+    angles = [n / float(N) * 2 * np.pi for n in range(N)]
+    angles += angles[:1] # 닫힌 도형을 위해 첫 각도 추가
+    
+    # 값도 닫힌 도형을 위해 첫 값 추가
+    values += values[:1]
 
-    ax.set_theta_offset(3.1415926535 / 2)
+    # 그래프 그리기
+    fig, ax = plt.subplots(figsize=(4, 4), subplot_kw=dict(polar=True))
+    
+    # 축(Spines) 설정 - 여기가 원형/다각형 결정
+    # 0도(12시 방향)부터 시작
+    ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
 
-    ax.set_thetagrids([a * 180 / 3.1415926535 for a in angles], labels, fontsize=9)
-    ax.set_ylim(0, 10)
-    ax.set_yticks([2, 4, 6, 8, 10])
-    ax.set_yticklabels(["2", "4", "6", "8", "10"], fontsize=7)
+    # X축 라벨(카테고리) 설정
+    plt.xticks(angles[:-1], categories, size=11, weight='bold')
 
-    ax.plot(angles_closed, vals_closed, linewidth=2)
-    ax.fill(angles_closed, vals_closed, alpha=0.12)
+    # Y축 라벨(점수) 설정
+    ax.set_rlabel_position(0)
+    plt.yticks([2, 4, 6, 8, 10], ["2", "4", "6", "8", "10"], color="grey", size=8)
+    plt.ylim(0, 10)
 
-    # 여백 최소화
-    fig.tight_layout(pad=0.6)
+    # 데이터 플롯 (선 그리기)
+    ax.plot(angles, values, linewidth=2, linestyle='solid', color='#3b82f6')
+    
+    # 내부 채우기
+    ax.fill(angles, values, '#3b82f6', alpha=0.2)
 
+    # 이미지 저장
     buf = BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.15)
+    plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
     buf.seek(0)
     plt.close(fig)
+    
     return buf
-
-
-def render_radar_chart_to_streamlit(st, scores: Dict[str, float]) -> Optional[BytesIO]:
-    """
-    Streamlit에 표시 + PDF용 PNG(BytesIO)도 반환
-    """
-    png = build_radar_png(scores, size_px=320)
-    if png is None:
-        return None
-    st.image(png, width=260)  # ✅ 그래프 크기: 강제로 작게
-    return png

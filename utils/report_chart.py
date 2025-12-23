@@ -2,37 +2,36 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+import math
+
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import streamlit as st
 
 
+# -------------------------------------------------
+# 한글 폰트 설정
+# -------------------------------------------------
 def setup_matplotlib_korean_font():
-    """
-    utils/fonts 폴더의 ttf/otf/ttc 폰트를 찾아 matplotlib에 등록하고,
-    한글 깨짐 방지를 위해 rcParams를 설정한다.
-    """
     fonts_dir = Path(__file__).resolve().parent / "fonts"
     font_files = []
+
     if fonts_dir.exists():
         font_files += list(fonts_dir.glob("*.ttf"))
         font_files += list(fonts_dir.glob("*.otf"))
         font_files += list(fonts_dir.glob("*.ttc"))
 
-    # 폰트가 하나도 없으면 기본값으로 진행(깨질 수 있음)
     chosen_family = None
 
-    # 폰트 등록
     for fp in font_files:
         try:
             font_manager.fontManager.addfont(str(fp))
         except Exception:
             pass
 
-    # 나눔고딕 우선 선택
     for fp in font_files:
         name = fp.stem.lower()
-        if "nanumgothic" in name or "나눔고딕" in name:
+        if "nanum" in name or "noto" in name:
             try:
                 prop = font_manager.FontProperties(fname=str(fp))
                 chosen_family = prop.get_name()
@@ -40,36 +39,29 @@ def setup_matplotlib_korean_font():
             except Exception:
                 continue
 
-    # 못 찾으면 첫 폰트라도 사용
     if chosen_family is None and font_files:
         try:
             prop = font_manager.FontProperties(fname=str(font_files[0]))
             chosen_family = prop.get_name()
         except Exception:
-            chosen_family = None
+            pass
 
     if chosen_family:
         plt.rcParams["font.family"] = chosen_family
 
-    # 마이너스 기호 깨짐 방지
     plt.rcParams["axes.unicode_minus"] = False
 
 
-def render_radar_chart_to_streamlit(scores: dict, size=(3.2, 3.0), dpi=180) -> BytesIO:
-    """
-    Streamlit에 레이더 차트를 표시하고, PDF에 넣을 수 있도록 PNG BytesIO도 반환한다.
-    scores 예:
-      {"학업역량": 8, "학업태도": 7, "학업 외 소양": 6}
-    """
+# -------------------------------------------------
+# 내부 공통 레이더 생성
+# -------------------------------------------------
+def _make_radar_figure(scores: dict, size=(3.2, 3.0)):
     labels = ["학업역량", "학업태도", "학업 외 소양"]
     values = [float(scores.get(k, 0) or 0) for k in labels]
 
-    # 닫힌 폴리곤
-    values = values + values[:1]
-
-    import math
+    values += values[:1]
     angles = [n / float(len(labels)) * 2 * math.pi for n in range(len(labels))]
-    angles = angles + angles[:1]
+    angles += angles[:1]
 
     fig = plt.figure(figsize=size)
     ax = fig.add_subplot(111, polar=True)
@@ -77,7 +69,11 @@ def render_radar_chart_to_streamlit(scores: dict, size=(3.2, 3.0), dpi=180) -> B
     ax.set_theta_offset(math.pi / 2)
     ax.set_theta_direction(-1)
 
-    ax.set_thetagrids([a * 180 / math.pi for a in angles[:-1]], labels, fontsize=9)
+    ax.set_thetagrids(
+        [a * 180 / math.pi for a in angles[:-1]],
+        labels,
+        fontsize=9,
+    )
     ax.set_ylim(0, 10)
     ax.set_yticks([2, 4, 6, 8, 10])
     ax.set_yticklabels(["2", "4", "6", "8", "10"], fontsize=8)
@@ -85,12 +81,34 @@ def render_radar_chart_to_streamlit(scores: dict, size=(3.2, 3.0), dpi=180) -> B
     ax.plot(angles, values, linewidth=2)
     ax.fill(angles, values, alpha=0.15)
 
-    # Streamlit 표시
+    return fig
+
+
+# -------------------------------------------------
+# Streamlit 표시용
+# -------------------------------------------------
+def render_radar_chart_to_streamlit(scores: dict):
+    fig = _make_radar_figure(scores)
     st.pyplot(fig, clear_figure=True)
 
-    # PNG bytes 반환(PDF 삽입용)
     buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=180, bbox_inches="tight")
+    buf.seek(0)
+    plt.close(fig)
+    return buf
+
+
+# -------------------------------------------------
+# PDF/UI 공용 PNG 생성용 (⭐ report_ui가 찾는 함수)
+# -------------------------------------------------
+def build_radar_png(scores: dict) -> BytesIO:
+    """
+    report_ui.py에서 import하는 함수
+    """
+    fig = _make_radar_figure(scores)
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=180, bbox_inches="tight")
     buf.seek(0)
     plt.close(fig)
     return buf

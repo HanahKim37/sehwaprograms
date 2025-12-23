@@ -10,7 +10,11 @@ def _img_to_base64(img_bytes):
 
 def _get_star_html(score):
     """점수를 별 아이콘으로 변환"""
-    score = int(score) if score else 0
+    try:
+        score = int(score)
+    except:
+        score = 0
+    
     # 꽉 찬 별(★)과 빈 별(☆) 생성
     fill = "★" * (score // 2)
     empty = "☆" * (5 - (score // 2))
@@ -30,6 +34,33 @@ def _highlight(text, keywords):
             text = text.replace(k, f"<span style='background:linear-gradient(to top, #fef08a 40%, transparent 40%); font-weight:800; padding:0 2px;'>{k}</span>")
     return text
 
+def inject_report_css(st=None):
+    """
+    메인 페이지에서 호출하는 CSS 주입 함수.
+    폰트 로드 및 인쇄 시 불필요한 요소 숨김 처리를 담당합니다.
+    """
+    if st is None:
+        import streamlit as st
+
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap');
+        
+        /* 인쇄 시 사이드바 및 버튼 숨김 */
+        @media print {
+            .stSidebar, .stButton, .stDownloadButton, header, footer { 
+                display: none !important; 
+            }
+            .block-container {
+                padding: 0 !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_png: Optional[BytesIO] = None, pdf_bytes: Optional[bytes] = None):
     """
     모달 창에 보고서를 렌더링합니다.
@@ -40,7 +71,7 @@ def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_
         
         # 1. 데이터 준비
         overall = report.get("종합 평가", "")
-        detail = report.get("3대 평가 항목별 상세 분석", {})
+        detail = report.get("3대 평가 항목별 상세 분석", {}) or {}
         strengths = report.get("핵심 강점", [])
         weaknesses = report.get("보완 추천 영역", [])
         growth = report.get("맞춤형 성장 제안", {}) or {}
@@ -63,8 +94,6 @@ def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_
         # --------------------------------------------------------------------------------
         full_html = f"""
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap');
-            
             /* 컨테이너 리셋 */
             .rpt-container {{
                 font-family: 'Noto Sans KR', sans-serif;
@@ -163,10 +192,10 @@ def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_
                 display: inline-block; background: #111; color: #fff; font-size: 11px; font-weight: bold;
                 padding: 3px 8px; border-radius: 10px; margin-bottom: 5px;
             }}
-
-            /* 인쇄 시 버튼 숨김 */
-            @media print {{
-                .stButton, .stDownloadButton {{ display: none !important; }}
+            
+            /* 반응형 처리 (모바일 등에서 1단으로) */
+            @media (max-width: 768px) {{
+                .grid-2, .major-grid {{ grid-template-columns: 1fr; }}
             }}
         </style>
 

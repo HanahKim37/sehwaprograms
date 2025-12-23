@@ -8,12 +8,26 @@ def _img_to_base64(img_bytes):
     if img_bytes is None: return ""
     return base64.b64encode(img_bytes.getvalue()).decode()
 
-def _get_star_html(score):
-    """점수를 별 아이콘으로 변환"""
+def _normalize_score(score):
+    """
+    점수를 10점 만점으로 변환
+    - 입력이 80이면 -> 8
+    - 입력이 8이면 -> 8
+    - 입력이 문자열이면 숫자 변환 시도
+    """
     try:
-        score = int(score)
+        s = float(score)
+        if s > 10:
+            return int(s / 10)
+        return int(s)
     except:
-        score = 0
+        return 0
+
+def _get_star_html(score):
+    """점수를 별 아이콘으로 변환 (점수 정규화 포함)"""
+    score = _normalize_score(score)
+    
+    # 꽉 찬 별(★)과 빈 별(☆) 생성
     full = "★" * (score // 2)
     empty = "☆" * (5 - (score // 2))
     return f"<span style='color:#f59e0b; font-size:18px;'>{full}</span><span style='color:#e2e8f0; font-size:18px;'>{empty}</span>"
@@ -26,6 +40,8 @@ def _list_to_html(items):
 def _highlight(text, keywords):
     """키워드 형광펜 효과"""
     text = str(text).replace("\n", "<br>")
+    if not keywords: return text
+    
     for k in keywords:
         if k and len(k) > 1:
             text = text.replace(k, f"<span style='background:linear-gradient(to top, #fef08a 40%, transparent 40%); font-weight:800; padding:0 2px;'>{k}</span>")
@@ -39,45 +55,31 @@ def inject_report_css(st=None):
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap');
-        
         .rpt-container { font-family: 'Noto Sans KR', sans-serif; color: #333; line-height: 1.6; }
         .rpt-header { text-align: center; padding-bottom: 20px; margin-bottom: 30px; border-bottom: 2px solid #333; }
         .rpt-title { font-size: 32px; font-weight: 900; color: #111; margin: 0 0 5px 0; }
         .rpt-sub { font-size: 14px; color: #666; margin: 0; }
         .rpt-meta { text-align: right; font-size: 14px; font-weight: 700; color: #555; margin-top: 15px; }
-        
-        .rpt-section-title {
-            font-size: 20px; font-weight: 800; color: #1e293b; margin-top: 40px; margin-bottom: 15px;
-            border-left: 5px solid #2563eb; padding-left: 12px; display: flex; align-items: center;
-        }
-        
+        .rpt-section-title { font-size: 20px; font-weight: 800; color: #1e293b; margin-top: 40px; margin-bottom: 15px; border-left: 5px solid #2563eb; padding-left: 12px; display: flex; align-items: center; }
         .rpt-summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; font-size: 16px; text-align: justify; color: #334155; }
-        
         .box-panel { padding: 20px; border-radius: 12px; height: 100%; border: 1px solid transparent; }
         .bg-green { background: #f0fdf4; border-color: #bbf7d0; }
         .bg-red { background: #fef2f2; border-color: #fecaca; }
         .bg-blue { background: #eff6ff; border-color: #dbeafe; }
         .bg-gray { background: #f8fafc; border-color: #e2e8f0; }
-        
         .box-head { display: block; font-weight: 800; font-size: 16px; margin-bottom: 12px; color: #333; }
         .box-list { margin: 0; padding-left: 18px; font-size: 14px; }
         .box-list li { margin-bottom: 6px; }
-        
         .detail-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
         .detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .detail-title { font-size: 18px; font-weight: 800; color: #1e293b; }
         .evidence-box { background-color: #f1f5f9; border-radius: 8px; padding: 15px; margin-top: 12px; border-left: 4px solid #94a3b8; font-size: 13.5px; color: #475569; }
-        
-        /* 책 카드 스타일 */
         .book-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
         .book-tag { display: inline-block; font-size: 11px; font-weight: 800; color: #fff; background: #3b82f6; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
         .book-title { font-weight: 800; color: #1e293b; font-size: 14px; }
         .book-reason { font-size: 13px; color: #666; margin-top: 5px; border-top: 1px dashed #eee; padding-top: 5px; }
-        
-        /* 학과 카드 스타일 */
         .major-card { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 15px; text-align: center; position: relative; margin-top: 10px; height: 100%; }
         .major-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #0f172a; color: #fff; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 20px; }
-
         @media print { .stButton, .stDownloadButton { display: none !important; } }
         </style>
         """,
@@ -108,13 +110,7 @@ def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
 
         # 1. 헤더
-        st.markdown(f"""
-<div class='rpt-header'>
-<div class='rpt-title'>종합 분석 보고서</div>
-<div class='rpt-sub'>AI Student Record Analysis Report</div>
-<div class='rpt-meta'>학번: {sid} ｜ 성명: {sname}</div>
-</div>
-""", unsafe_allow_html=True)
+        st.markdown(f"<div class='rpt-header'><div class='rpt-title'>종합 분석 보고서</div><div class='rpt-sub'>AI Student Record Analysis Report</div><div class='rpt-meta'>학번: {sid} ｜ 성명: {sname}</div></div>", unsafe_allow_html=True)
 
         # 2. 종합 평가
         st.markdown("<div class='rpt-section-title'>1. 종합 평가</div>", unsafe_allow_html=True)
@@ -123,82 +119,42 @@ def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_
         # 3. 그래프 및 강점/보완
         st.markdown("<div class='rpt-section-title'>2. 역량 시각화 및 분석</div>", unsafe_allow_html=True)
         
+        # 그래프 중앙 배치 (크기 줄임)
         if radar_png:
             c1, c2, c3 = st.columns([1, 1.5, 1])
             with c2:
                 st.image(radar_png, use_container_width=True)
         
+        # 강점/보완 2단 배치
         col_str, col_weak = st.columns(2)
         with col_str:
-            # HTML 태그 앞에 공백 없이 작성하여 코드 블록 인식 방지
-            st.markdown(f"""
-<div class='box-panel bg-green'>
-<span class='box-head' style='color:#15803d;'>✅ 핵심 강점</span>
-<ul class='box-list'>{_list_to_html(strengths)}</ul>
-</div>
-""", unsafe_allow_html=True)
+            st.markdown(f"<div class='box-panel bg-green'><span class='box-head' style='color:#15803d;'>✅ 핵심 강점</span><ul class='box-list'>{_list_to_html(strengths)}</ul></div>", unsafe_allow_html=True)
         with col_weak:
-            st.markdown(f"""
-<div class='box-panel bg-red'>
-<span class='box-head' style='color:#b91c1c;'>⚠️ 보완 추천 영역</span>
-<ul class='box-list'>{_list_to_html(weaknesses)}</ul>
-</div>
-""", unsafe_allow_html=True)
+            st.markdown(f"<div class='box-panel bg-red'><span class='box-head' style='color:#b91c1c;'>⚠️ 보완 추천 영역</span><ul class='box-list'>{_list_to_html(weaknesses)}</ul></div>", unsafe_allow_html=True)
 
         # 4. 상세 분석
         st.markdown("<div class='rpt-section-title'>3. 평가 항목별 상세 분석</div>", unsafe_allow_html=True)
         for key in ["학업역량", "학업태도", "학업 외 소양"]:
             v = detail.get(key, {})
-            score = v.get('점수', 0)
+            score = _normalize_score(v.get('점수', 0))
             
-            st.markdown(f"""
-<div class='detail-card'>
-<div class='detail-head'>
-<span class='detail-title'>{key}</span>
-<div>{_get_star_html(score)} <span style='font-weight:bold; color:#666;'>({score}/10)</span></div>
-</div>
-<div style='font-size:15px; color:#333; margin-bottom:8px;'>{v.get('분석', '-')}</div>
-<div class='evidence-box'>
-<div style='font-weight:800; margin-bottom:5px;'>📢 평가 근거 문장</div>
-<ul style='padding-left:20px; margin:0;'>{_list_to_html(v.get('평가 근거 문장', [])[:3])}</ul>
-</div>
-</div>
-""", unsafe_allow_html=True)
+            st.markdown(f"<div class='detail-card'><div class='detail-head'><span class='detail-title'>{key}</span><div>{_get_star_html(score)} <span style='font-weight:bold; color:#666;'>({score}/10)</span></div></div><div style='font-size:15px; color:#333; margin-bottom:8px;'>{v.get('분석', '-')}</div><div class='evidence-box'><div style='font-weight:800; margin-bottom:5px;'>📢 평가 근거 문장</div><ul style='padding-left:20px; margin:0;'>{_list_to_html(v.get('평가 근거 문장', [])[:3])}</ul></div></div>", unsafe_allow_html=True)
 
-        # 5. 성장 제안
+        # 5. 성장 제안 (2단)
         st.markdown("<div class='rpt-section-title'>4. 맞춤형 성장 제안</div>", unsafe_allow_html=True)
         g_col1, g_col2 = st.columns(2)
         
         with g_col1:
-            st.markdown(f"""
-<div class='box-panel bg-blue' style='margin-bottom:15px;'>
-<span class='box-head' style='color:#1d4ed8;'>📌 생활기록부 중점 전략</span>
-<div style='font-size:14px;'>{strat or '-'}</div>
-</div>
-<div class='box-panel bg-blue'>
-<span class='box-head' style='color:#1d4ed8;'>🏫 추천 학교 행사</span>
-<ul class='box-list'>{_list_to_html(events[:4])}</ul>
-</div>
-""", unsafe_allow_html=True)
+            st.markdown(f"<div class='box-panel bg-blue' style='margin-bottom:15px;'><span class='box-head' style='color:#1d4ed8;'>📌 생활기록부 중점 전략</span><div style='font-size:14px;'>{strat or '-'}</div></div><div class='box-panel bg-blue'><span class='box-head' style='color:#1d4ed8;'>🏫 추천 학교 행사</span><ul class='box-list'>{_list_to_html(events[:4])}</ul></div>", unsafe_allow_html=True)
             
         with g_col2:
-            # 도서 목록 HTML 조립 (들여쓰기 제거)
+            # 도서 목록 HTML 조립
             books_html = ""
             for b in books[:3]:
                 if isinstance(b, dict):
-                    # HTML 문자열을 한 줄로 붙이거나 들여쓰기 없이 작성
-                    books_html += f"""
-<div class='book-item'>
-<div><span class='book-tag'>{b.get('분류', '추천')}</span> <span class='book-title'>{b.get('도서', '-')}</span> <span style='font-size:12px; color:#666;'>({b.get('저자','')})</span></div>
-<div class='book-reason'>{b.get('추천 이유', '-')}</div>
-</div>"""
+                    books_html += f"<div class='book-item'><div><span class='book-tag'>{b.get('분류', '추천')}</span> <span class='book-title'>{b.get('도서', '-')}</span> <span style='font-size:12px; color:#666;'>({b.get('저자','')})</span></div><div class='book-reason'>{b.get('추천 이유', '-')}</div></div>"
             
-            st.markdown(f"""
-<div class='box-panel bg-gray'>
-<span class='box-head' style='color:#333;'>📚 추천 도서</span>
-{books_html}
-</div>
-""", unsafe_allow_html=True)
+            st.markdown(f"<div class='box-panel bg-gray'><span class='box-head' style='color:#333;'>📚 추천 도서</span>{books_html}</div>", unsafe_allow_html=True)
 
         # 6. 추천 학과
         st.markdown("<div class='rpt-section-title'>5. 역량 기반 추천 학과</div>", unsafe_allow_html=True)
@@ -206,18 +162,18 @@ def render_report_modal(st, report: Dict[str, Any], sid: str, sname: str, radar_
         for i, m in enumerate(majors[:3]):
             with maj_cols[i]:
                 if isinstance(m, dict):
-                    st.markdown(f"""
-<div class='major-card'>
-<div class='major-badge'>TOP {i+1}</div>
-<div style='font-weight:800; font-size:16px; margin:10px 0; color:#1e293b;'>{m.get('학과','-')}</div>
-<div style='font-size:12px; color:#64748b; line-height:1.4;'>{m.get('근거','-')}</div>
-</div>
-""", unsafe_allow_html=True)
+                    st.markdown(f"<div class='major-card'><div class='major-badge'>TOP {i+1}</div><div style='font-weight:800; font-size:16px; margin:10px 0; color:#1e293b;'>{m.get('학과','-')}</div><div style='font-size:12px; color:#64748b; line-height:1.4;'>{m.get('근거','-')}</div></div>", unsafe_allow_html=True)
 
         # PDF 저장 버튼
         if pdf_bytes:
             st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
-            st.download_button("📥 보고서 PDF 저장", data=pdf_bytes, file_name=f"{sname}_분석보고서.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button(
+                "📥 보고서 PDF 저장", 
+                data=pdf_bytes, 
+                file_name=f"{sname}_분석보고서.pdf", 
+                mime="application/pdf", 
+                use_container_width=True
+            )
             
         st.markdown("</div>", unsafe_allow_html=True)
 

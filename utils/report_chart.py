@@ -6,13 +6,15 @@ import math
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
-import streamlit as st
 
 
 # -------------------------------------------------
 # 한글 폰트 설정
 # -------------------------------------------------
-def setup_matplotlib_korean_font():
+def setup_matplotlib_korean_font(_st=None):
+    """
+    기존 호출 호환을 위해 _st 인자를 받지만 사용하지 않습니다.
+    """
     fonts_dir = Path(__file__).resolve().parent / "fonts"
     font_files = []
 
@@ -23,12 +25,14 @@ def setup_matplotlib_korean_font():
 
     chosen_family = None
 
+    # 폰트 등록
     for fp in font_files:
         try:
             font_manager.fontManager.addfont(str(fp))
         except Exception:
             pass
 
+    # 나눔/노토 우선 선택
     for fp in font_files:
         name = fp.stem.lower()
         if "nanum" in name or "noto" in name:
@@ -39,6 +43,7 @@ def setup_matplotlib_korean_font():
             except Exception:
                 continue
 
+    # 못 찾으면 첫 폰트라도 사용
     if chosen_family is None and font_files:
         try:
             prop = font_manager.FontProperties(fname=str(font_files[0]))
@@ -85,30 +90,49 @@ def _make_radar_figure(scores: dict, size=(3.2, 3.0)):
 
 
 # -------------------------------------------------
-# Streamlit 표시용
+# Streamlit 표시 + PNG 반환 (호환 시그니처)
 # -------------------------------------------------
-def render_radar_chart_to_streamlit(scores: dict):
-    fig = _make_radar_figure(scores)
-    st.pyplot(fig, clear_figure=True)
+def render_radar_chart_to_streamlit(*args, **kwargs) -> BytesIO:
+    """
+    ✅ 기존 메인 호출: render_radar_chart_to_streamlit(st, scores)
+    ✅ 신규 호출: render_radar_chart_to_streamlit(scores)
+
+    둘 다 지원합니다.
+    반환: PNG(BytesIO) - PDF 삽입용
+    """
+    # args 파싱
+    if len(args) == 2:
+        st_obj, scores = args
+    elif len(args) == 1:
+        st_obj, scores = None, args[0]
+    else:
+        st_obj = kwargs.get("st")
+        scores = kwargs.get("scores", {})
+
+    # figure size (그래프 작게)
+    size = kwargs.get("size", (3.2, 3.0))
+    dpi = int(kwargs.get("dpi", 180))
+
+    fig = _make_radar_figure(scores or {}, size=size)
+
+    # Streamlit 표시 (st 전달된 경우만)
+    if st_obj is not None:
+        st_obj.pyplot(fig, clear_figure=True)
 
     buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=180, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
     buf.seek(0)
     plt.close(fig)
     return buf
 
 
 # -------------------------------------------------
-# PDF/UI 공용 PNG 생성용 (⭐ report_ui가 찾는 함수)
+# UI/PDF 공용 PNG 생성 (report_ui에서 import)
 # -------------------------------------------------
-def build_radar_png(scores: dict) -> BytesIO:
-    """
-    report_ui.py에서 import하는 함수
-    """
-    fig = _make_radar_figure(scores)
-
+def build_radar_png(scores: dict, size=(3.2, 3.0), dpi=180) -> BytesIO:
+    fig = _make_radar_figure(scores or {}, size=size)
     buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=180, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=int(dpi), bbox_inches="tight")
     buf.seek(0)
     plt.close(fig)
     return buf

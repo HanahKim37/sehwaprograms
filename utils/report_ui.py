@@ -4,15 +4,19 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from io import BytesIO
 
-# 이 파일은 "메인에서 호출하는 인자 형태"를 그대로 받도록 고정합니다.
-# render_report_modal(st, report, sid, sname, radar_png, pdf_bytes)
+def inject_report_css(st=None):
+    """
+    ✅ 메인에서 inject_report_css() 처럼 인자 없이 호출해도 동작하도록 설계.
+    - st가 None이면 내부에서 streamlit을 import해서 사용.
+    - st를 넘겨도 동작(호환).
+    """
+    if st is None:
+        import streamlit as st  # noqa: F401
 
-def inject_report_css(st):
-    """결과 모달(UI) 전용 CSS만 주입. 메인 화면에는 영향 최소."""
     st.markdown(
         """
         <style>
-        .rpt-wrap{font-family:inherit;}
+        /* 보고서 모달(UI) 전용 스타일 - 메인 화면 영향 최소 */
         .rpt-title{
             text-align:center;
             font-size:28px;
@@ -60,7 +64,11 @@ def inject_report_css(st):
             border-radius:14px;
             padding:14px;
         }
-        .rpt-subtitle{font-size:16px;font-weight:800;margin:0 0 8px 0;}
+        .rpt-subtitle{
+            font-size:16px;
+            font-weight:800;
+            margin:0 0 8px 0;
+        }
         .rpt-evidence{
             background:#f9fafb;
             border:1px solid #e5e7eb;
@@ -101,7 +109,7 @@ def inject_report_css(st):
     )
 
 
-def _stars(score: int, max_score: int = 10) -> str:
+def _stars(score: Any, max_score: int = 10) -> str:
     try:
         s = int(score)
     except Exception:
@@ -119,17 +127,13 @@ def render_report_modal(
     pdf_bytes: Optional[bytes] = None,
 ):
     """
-    ✅ 메인 호출과 "완전히 동일한" 시그니처.
-    - st: streamlit 모듈
-    - report: dict(JSON)
-    - sid/sname: 학생 식별
-    - radar_png: BytesIO (선택)
-    - pdf_bytes: bytes (선택)
+    ✅ 메인에서 호출하는 형태를 고정:
+    render_report_modal(st, report, sid, sname, radar_png, pdf_bytes)
     """
 
     @st.dialog(f"📊 SH-Insight 심층 분석 보고서 · {sid} / {sname}", width="large")
     def _show():
-        # CSS
+        # 모달 내부 CSS 주입
         inject_report_css(st)
 
         majors = report.get("역량 기반 추천 학과", [])
@@ -153,7 +157,7 @@ def render_report_modal(
         st.markdown(f"<div class='rpt-meta'>{sid} / {sname}</div>", unsafe_allow_html=True)
         st.markdown("<hr class='rpt-hr'/>", unsafe_allow_html=True)
 
-        # 3) 종합평가 + 예상 희망 진로
+        # 3) 종합 평가 (예상 희망 진로 포함)
         st.markdown(
             f"""
             <div class='rpt-bar-title'>
@@ -165,7 +169,7 @@ def render_report_modal(
         )
         st.markdown(f"<div class='rpt-card'>{overall}</div>", unsafe_allow_html=True)
 
-        # 4) 레이더(가운데 작게) - 여기서는 이미지가 이미 만들어져 있다고 가정
+        # 4) 레이더 (가운데 작게)
         st.markdown(
             """
             <div class='rpt-bar-title'>
@@ -175,14 +179,14 @@ def render_report_modal(
             """,
             unsafe_allow_html=True
         )
-
         if radar_png is not None:
-            st.image(radar_png, width=320)  # ✅ 작게
+            st.image(radar_png, width=320)
         else:
             st.info("레이더 차트 이미지가 없습니다.")
 
-        # 5) 핵심강점/보완영역 2박스 (색 박스 내부에 문구)
+        # 5) 핵심 강점 / 보완 영역 (색 박스 내부)
         st.markdown("<div class='rpt-two'>", unsafe_allow_html=True)
+
         st.markdown("<div class='rpt-pill-good'>", unsafe_allow_html=True)
         st.markdown("<div class='rpt-subtitle'>핵심 강점</div>", unsafe_allow_html=True)
         if isinstance(strengths, list) and strengths:
@@ -200,9 +204,10 @@ def render_report_modal(
         else:
             st.markdown("-")
         st.markdown("</div>", unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # 6) 3대 평가 항목 섹션화 + 별점(10개)
+        # 6) 3대 평가 항목별 상세 분석 + 별점(10)
         st.markdown(
             """
             <div class='rpt-bar-title'>
@@ -221,7 +226,7 @@ def render_report_modal(
             score = v.get("점수", 0)
             st.markdown("<div class='rpt-section'>", unsafe_allow_html=True)
             st.markdown(f"<h4>{key}</h4>", unsafe_allow_html=True)
-            st.markdown(f"<div class='rpt-stars'>{_stars(score)} ({int(score) if str(score).isdigit() else score}/10)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='rpt-stars'>{_stars(score)} ({score}/10)</div>", unsafe_allow_html=True)
 
             evid = v.get("평가 근거 문장", []) or []
             st.markdown("<div class='rpt-evidence'><b>평가 근거 문장</b><br/>", unsafe_allow_html=True)
@@ -236,7 +241,7 @@ def render_report_modal(
             st.write(v.get("분석", ""))
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # 7) 맞춤형 성장 제안(좌) + 추천도서(우)
+        # 7) 맞춤형 성장 제안 (좌) + 추천 도서 (우)
         st.markdown(
             """
             <div class='rpt-bar-title'>
@@ -246,13 +251,16 @@ def render_report_modal(
             """,
             unsafe_allow_html=True
         )
-
         c1, c2 = st.columns(2)
 
         with c1:
             st.markdown("<div class='rpt-card'>", unsafe_allow_html=True)
             st.markdown("<div class='rpt-subtitle'>생활기록부 중점 보완 전략</div>", unsafe_allow_html=True)
-            st.write((growth.get("생활기록부 중점 보완 전략", "") if isinstance(growth, dict) else "") or "-")
+            if isinstance(growth, dict):
+                st.write(growth.get("생활기록부 중점 보완 전략", "") or "-")
+            else:
+                st.write("-")
+
             st.markdown("<div class='rpt-subtitle' style='margin-top:12px;'>추천 학교 행사</div>", unsafe_allow_html=True)
             ev = growth.get("추천 학교 행사", []) if isinstance(growth, dict) else []
             if isinstance(ev, list) and ev:
@@ -269,14 +277,14 @@ def render_report_modal(
                 for b in books[:10]:
                     if isinstance(b, dict):
                         st.markdown(f"**[{b.get('분류','')}] {b.get('도서','')} ({b.get('저자','')})**")
-                        st.write(b.get("추천 이유", ""))
+                        st.write(b.get("추천 이유", "") or "")
                     else:
                         st.markdown(f"- {b}")
             else:
                 st.markdown("-")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # 8) 영역별 심화 탐구 주제 제안(파란 박스)
+        # 8) 영역별 심화 탐구 주제 제안
         st.markdown(
             """
             <div class='rpt-bar-title'>
@@ -286,14 +294,13 @@ def render_report_modal(
             """,
             unsafe_allow_html=True
         )
-
         st.markdown("<div class='rpt-bluebox'>", unsafe_allow_html=True)
         for k in ["자율", "진로", "동아리"]:
             txt = topics.get(k, "") if isinstance(topics, dict) else ""
             st.markdown(f"**{k}**: {txt or '-'}")
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # 9) 추천 학과 3박스는 UI에서는 columns로
+        # 9) 추천 학과 3박스
         st.markdown(
             """
             <div class='rpt-bar-title'>
@@ -303,12 +310,12 @@ def render_report_modal(
             """,
             unsafe_allow_html=True
         )
-        majors = majors if isinstance(majors, list) else []
+        majors_list = majors if isinstance(majors, list) else []
         cols = st.columns(3)
         for i in range(3):
             with cols[i]:
-                if i < len(majors):
-                    m = majors[i]
+                if i < len(majors_list):
+                    m = majors_list[i]
                     dept = m.get("학과", "") if isinstance(m, dict) else str(m)
                     why = m.get("근거", "") if isinstance(m, dict) else ""
                     st.markdown("<div class='rpt-card'>", unsafe_allow_html=True)

@@ -4,6 +4,12 @@ import fitz  # PyMuPDF
 from PIL import Image
 import os
 
+st.set_page_config(
+    page_title="페이지 제목",  # 페이지마다 다르게 설정
+    layout="wide",
+    initial_sidebar_state="expanded"  # ✅ 이 옵션이 사이드바를 항상 펼쳐진 상태로 시작하게 합니다.
+)
+
 # 폴더 생성
 os.makedirs("Original_PDFs", exist_ok=True)
 os.makedirs("Signed_PDFs", exist_ok=True)

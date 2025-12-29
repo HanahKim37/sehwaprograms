@@ -68,7 +68,7 @@ def generate_excel_with_images(doc_name, signature_folder):
     return output
 
 # --- 메인 화면 ---
-st.title("✒️ 온라인 회의록 서명 시스템")
+st.title("✒️ 예체능생활교양과 전자서명")
 st.markdown("---")
 
 tab1, tab2 = st.tabs(["📝 사용자 (서명하기)", "⚙️ 관리자 (문서관리)"])

@@ -19,3 +19,4 @@ openpyxl
 reportlab
 openai
 PyMuPDF
+XlsxWriter

@@ -22,9 +22,6 @@ except:
     # utils가 없거나 로딩 실패시에도 앱이 죽지 않도록 방어
     st.sidebar.warning("사이드바 로딩 실패 (utils 경로 확인 필요)")
 
-# 2. 페이지 설정 (필요시 import 직후로 이동 가능)
-# st.set_page_config(page_title="회의록 서명", layout="wide", initial_sidebar_state="expanded")
-
 # --- 설정 및 데이터 ---
 BASE_DIR = os.getcwd()
 ORIG_DIR = os.path.join(BASE_DIR, "Original_PDFs")
@@ -77,7 +74,6 @@ def generate_excel_with_images(doc_name, signature_folder):
 st.title("✒️ 예체능생활교양과 전자서명")
 st.markdown("---")
 
-# ✅ 여기서 변수명을 명확하게 정의합니다 (tab_user, tab_admin)
 tab_user, tab_admin = st.tabs(["📝 사용자 (서명하기)", "⚙️ 관리자 (문서관리/삭제/다운로드)"])
 
 # ==========================================
@@ -104,10 +100,25 @@ with tab_user:
                 os.makedirs(current_doc_sign_dir)
 
             st.markdown("---")
-            col_left, col_right = st.columns([1, 1.2])
             
-            # 왼쪽: 현황판 및 서명 입력
-            with col_left:
+            # [수정됨] 왼쪽(문서 1.2) | 오른쪽(서명 1.0) 비율로 변경
+            col_doc, col_sign = st.columns([1.2, 1])
+            
+            # --- [왼쪽] 문서 미리보기 ---
+            with col_doc:
+                st.subheader("📄 회의록 내용")
+                doc_path = os.path.join(ORIG_DIR, selected_doc)
+                try:
+                    doc = fitz.open(doc_path)
+                    page = doc[0] # 첫 페이지만
+                    pix = page.get_pixmap(dpi=120)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    st.image(img, caption="문서 미리보기 (1페이지)", use_container_width=True)
+                except Exception as e:
+                    st.error(f"문서 로딩 실패: {e}")
+
+            # --- [오른쪽] 현황판 및 서명 입력 ---
+            with col_sign:
                 st.subheader("1. 서명 현황표")
                 
                 # 현황 데이터 생성
@@ -135,17 +146,21 @@ with tab_user:
                     st.success(f"✅ {my_name}님은 이미 서명을 완료하셨습니다.")
                 
                 # 서명 패드
-                st.caption(f"아래 영역에 서명 후 [제출] 버튼을 눌러주세요.")
+                st.caption(f"아래 빈 영역에 서명 후 [제출] 버튼을 눌러주세요.")
+                
                 canvas = st_canvas(
-                    fill_color="rgba(255, 255, 255, 0)", # 투명 배경
+                    fill_color="rgba(255, 255, 255, 0)", # 채우기 투명
                     stroke_width=2,
                     stroke_color="#000",
-                    background_color="#f0f2f6",
+                    background_color="rgba(255, 255, 255, 0)", # 배경 투명
                     height=150,
                     width=400,
                     drawing_mode="freedraw",
                     key=f"canvas_{selected_doc}_{my_name}" # 캔버스 리셋을 위한 키
                 )
+                
+                # 경계선이 안보일 수 있어 안내 추가
+                st.caption("※ 위 투명 영역에 서명하세요.")
                 
                 if st.button("✅ 서명 제출", use_container_width=True):
                     if canvas.image_data is not None:
@@ -156,19 +171,6 @@ with tab_user:
                         st.rerun()
                     else:
                         st.warning("서명을 먼저 그려주세요.")
-
-            # 오른쪽: 문서 미리보기
-            with col_right:
-                st.subheader("📄 회의록 내용")
-                doc_path = os.path.join(ORIG_DIR, selected_doc)
-                try:
-                    doc = fitz.open(doc_path)
-                    page = doc[0] # 첫 페이지만
-                    pix = page.get_pixmap(dpi=120)
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    st.image(img, caption="문서 미리보기 (1페이지)", use_container_width=True)
-                except Exception as e:
-                    st.error(f"문서 로딩 실패: {e}")
 
 # ==========================================
 # 탭 2: 관리자 (문서 관리)
@@ -246,7 +248,7 @@ with tab_admin:
             
             # 컬럼 3: 비번 입력
             with c3:
-                pw = st.text_input("삭제비번", type="password", key=f"pw_{p}", label_visibility="collapsed", placeholder="비번(9835)")
+                pw = st.text_input("삭제비번", type="password", key=f"pw_{p}", label_visibility="collapsed", placeholder="비밀번호 입력")
             
             # 컬럼 4: 삭제 버튼
             with c4:

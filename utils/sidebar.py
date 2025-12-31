@@ -25,7 +25,9 @@ def render_sidebar():
 
     # 연구부
     with st.sidebar.expander("🔬 연구부", expanded=False):
-        st.caption("⏳ 준비 중입니다")
+       if st.button("🎲 추첨 프로그램", use_container_width=True):
+            # pages 폴더 안에 '추첨_프로그램.py' 파일이 있어야 합니다.
+            st.switch_page("pages/추첨_프로그램.py")
 
     # 생활안전부
     with st.sidebar.expander("🛡️ 생활안전부", expanded=False):

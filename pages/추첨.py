@@ -1,15 +1,22 @@
+import os
+import sys
 import streamlit as st
 import pandas as pd
 import io
 
-# 공통 사이드바 불러오기
-from sidebar import render_sidebar
+# === [공통 사이드바 import 설정] ======================================
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))   # .../sehwaprograms/pages
+PARENT_DIR = os.path.dirname(CURRENT_DIR)                  # .../sehwaprograms
 
-# ✅ 모든 페이지에서 사이드바가 항상 보이도록
+if PARENT_DIR not in sys.path:
+    sys.path.append(PARENT_DIR)
+
+# ✅ utils 폴더 안의 sidebar.py 사용
+from utils.sidebar import render_sidebar
+# =====================================================================
+
+# ✅ 모든 페이지에서 사이드바 렌더링
 render_sidebar()
-
-# (메인 페이지에서 set_page_config를 이미 쓴 경우가 많으므로,
-#  여기서는 따로 set_page_config를 호출하지 않아도 됩니다.)
 
 st.title("🎲 추첨 프로그램")
 st.write(
@@ -32,12 +39,10 @@ num_winners = st.number_input(
     step=1,
 )
 
-# 업로드 파일이 없으면 안내만
 if uploaded_file is None:
     st.info("먼저 엑셀 파일을 업로드해주세요.")
     st.stop()
 
-# 🔹 3. 엑셀 파일 읽기
 try:
     df = pd.read_excel(uploaded_file)
 except Exception:
@@ -46,7 +51,6 @@ except Exception:
 
 required_cols = ["학번", "이름"]
 
-# 🔹 4. '학번', '이름' 열 존재 여부 확인
 if not all(col in df.columns for col in required_cols):
     st.error("엑셀에 **'학번'**, **'이름'** 열이 모두 존재해야 합니다.")
     st.write("현재 엑셀에 있는 열 목록:", list(df.columns))
@@ -65,16 +69,13 @@ if int(num_winners) > total_count:
     st.warning(f"추첨 인원({int(num_winners)}명)이 전체 인원({total_count}명)보다 많습니다. 인원 수를 줄여주세요.")
     st.stop()
 
-# 🔹 5. 추첨 실행 버튼
 if st.button("✅ 추첨 시작"):
-    # 무작위 샘플링 (중복 없음)
     result_df = df[required_cols].sample(
         n=int(num_winners),
         replace=False,
-        random_state=None,  # 실행할 때마다 다른 결과
+        random_state=None,
     ).reset_index(drop=True)
 
-    # 보기 좋게 번호 컬럼 추가
     result_df.index = result_df.index + 1
     result_df.index.name = "번호"
 
@@ -82,7 +83,6 @@ if st.button("✅ 추첨 시작"):
     st.subheader("추첨 결과")
     st.dataframe(result_df)
 
-    # 🔹 6. 엑셀로 다운로드할 수 있도록 버퍼에 저장
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         result_df.to_excel(writer, sheet_name="추첨결과")
